@@ -1,0 +1,106 @@
+{# core/templates/core/home.html #}
+{% extends "base.html" %}
+
+{% block title %}Dashboard · Orquestrador{% endblock %}
+
+{% block header_title %}
+    Orquestrador · Dashboard
+{% endblock %}
+
+{% block header_subtitle %}
+    Selecione um dos módulos abaixo para começar a trabalhar.
+{% endblock %}
+
+{% block header_actions %}
+    <!-- Se quiser pode remover este botão ou trocar o texto -->
+    <button type="button" class="btn btn-accent btn-sm">
+        + Novo módulo
+    </button>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+
+    <!-- Linha de cards com os módulos principais -->
+    <div class="row g-3">
+
+        <!-- Módulo: Automações IXC -->
+        <div class="col-md-6 col-xl-4">
+            <a href="{% url 'automation:job_list' %}"
+               class="module-card card h-100 text-decoration-none">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <h2 class="h5 mb-0">Automações</h2>
+                        <span class="module-pill">
+                            Robô / ERP
+                        </span>
+                    </div>
+                    <p class="text-muted small mb-3">
+                        Scripts de cadastro, faturamento, validações e integrações com ferramentas.
+                    </p>
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div class="module-status text-muted">
+                            <span class="bg-wip"></span>
+                            Em desenvolvimento
+                        </div>
+                        <small class="text-muted">Clique para abrir</small>
+                    </div>
+                </div>
+            </a>
+        </div>
+
+        <!-- Módulo: Integrações SAP / BI -->
+        <div class="col-md-6 col-xl-4">
+            <a href="#"
+               class="module-card card h-100 text-decoration-none">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <h2 class="h5 mb-0">Integrações &amp; </h2>
+                        <span class="module-pill">
+                            SAP · Power BI
+                        </span>
+                    </div>
+                    <p class="text-muted small mb-3">
+                        Orquestração de consultas, ETLs e dashboards corporativos.
+                    </p>
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div class="module-status text-muted">
+                            <span class="bg-online"></span>
+                            Em uso
+                        </div>
+                        <small class="text-muted">Clique para abrir</small>
+                    </div>
+                </div>
+            </a>
+        </div>
+
+        <!-- Módulo: SecurityVision / Rastreamento -->
+        <div class="col-md-6 col-xl-4">
+            <a href="{% url 'monitorServer:system_health' %}"
+               class="module-card card h-100 text-decoration-none">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <h2 class="h5 mb-0">Saúde Servidor</h2>
+                        <span class="module-pill">
+                            BLE · Gateways
+                        </span>
+                    </div>
+                    <p class="text-muted small mb-3">
+                        Monitoramento em tempo real dos perifericos do servidor.
+                    </p>
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div class="module-status text-muted">
+                            <span class="bg-wip"></span>
+                            MVP
+                        </div>
+                        <small class="text-muted">Clique para abrir</small>
+                    </div>
+                </div>
+            </a>
+        </div>
+
+
+    </div>
+
+</div>
+{% endblock %}

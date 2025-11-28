@@ -1,0 +1,433 @@
+{# templates/base.html #}
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="utf-8">
+    <title>{% block title %}Orquestrador{% endblock %}</title>
+
+    <!-- Bootstrap 5 via CDN (pode trocar depois por arquivo local se quiser) -->
+    <link
+        href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet"
+        integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH"
+        crossorigin="anonymous"
+    >
+
+    <!-- Estilos customizados do tema (preto, amarelo, branco) -->
+    <style>
+        /* =========================
+           PALETA DE CORES GLOBAL
+           ========================= */
+        :root {
+            --color-bg: #f5f5f5;           /* fundo claro da área principal */
+            --color-sidebar-bg: #111111;   /* fundo da sidebar (preto) */
+            --color-accent: #ffc800;       /* amarelo principal da marca */
+            --color-accent-soft: #ffec99;  /* variação mais clara do amarelo */
+            --color-text: #111111;         /* texto principal */
+            --color-muted: #6c757d;        /* texto secundário */
+        }
+
+        body {
+            margin: 0;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            background-color: var(--color-bg);
+            color: var(--color-text);
+        }
+
+        /* =========================
+           LAYOUT GERAL
+           ========================= */
+        .app-wrapper {
+            min-height: 100vh;             /* ocupa a tela inteira */
+            display: flex;
+        }
+
+        /* =========================
+           SIDEBAR
+           ========================= */
+        .sidebar {
+            width: 260px;                  /* largura fixa da barra lateral */
+            background: var(--color-sidebar-bg);
+            color: #ffffff;
+            display: flex;
+            flex-direction: column;
+            padding: 1.5rem 1rem;
+        }
+
+        .sidebar-brand {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-bottom: 2rem;
+        }
+
+        .sidebar-logo {
+            /* “logo” simples em forma de quadrado amarelo
+               você pode trocar por uma imagem <img> depois */
+            width: 40px;
+            height: 40px;
+            border-radius: 8px;
+            background: var(--color-accent);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            color: var(--color-sidebar-bg);
+            font-size: 1.1rem;
+        }
+
+        .sidebar-brand-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin: 0;
+        }
+
+        .sidebar-user {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.75rem 0.5rem;
+            border-radius: 12px;
+            background: rgba(255, 255, 255, 0.05);
+            margin-bottom: 1.5rem;
+        }
+
+        .sidebar-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: var(--color-accent);
+            color: var(--color-sidebar-bg);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+        }
+
+        .sidebar-user-name {
+            font-size: 0.95rem;
+            margin: 0;
+        }
+
+        .sidebar-user-role {
+            font-size: 0.75rem;
+            color: rgba(255, 255, 255, 0.65);
+        }
+
+        .sidebar-nav {
+            flex: 1; /* ocupa o espaço vertical restante */
+            margin-top: 1rem;
+        }
+
+        .sidebar-nav .nav-link {
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 0.9rem;
+            border-radius: 999px;
+            padding: 0.55rem 0.9rem;
+            margin-bottom: 0.25rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .sidebar-nav .nav-link:hover {
+            background: rgba(255, 255, 255, 0.08);
+            color: #ffffff;
+        }
+
+        .sidebar-nav .nav-link.active {
+            background: var(--color-accent);
+            color: var(--color-sidebar-bg);
+            font-weight: 600;
+        }
+
+        .sidebar-footer {
+            margin-top: 1.5rem;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            padding-top: 1rem;
+        }
+
+        .sidebar-footer .nav-link {
+            color: #ffb3b3; /* tom avermelhado para o “Sair” */
+        }
+
+        /* =========================
+           ÁREA PRINCIPAL
+           ========================= */
+        .main-content {
+            flex: 1;
+            background: var(--color-bg);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .main-header {
+            /* cabeçalho superior da página */
+            padding: 1rem 1.5rem;
+            border-bottom: 1px solid #e0e0e0;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: #ffffff;
+        }
+
+        .main-header-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin: 0;
+        }
+
+        .main-header-subtitle {
+            font-size: 0.85rem;
+            color: var(--color-muted);
+            margin: 0;
+        }
+
+        .btn-accent {
+            background: var(--color-accent);
+            border-color: var(--color-accent);
+            color: var(--color-sidebar-bg);
+            font-weight: 600;
+            border-radius: 999px;
+            padding-inline: 1.25rem;
+        }
+
+        .btn-accent:hover {
+            background: #ffdb33;
+            border-color: #ffdb33;
+            color: var(--color-sidebar-bg);
+        }
+
+        .content-wrapper {
+            /* área onde as páginas vão renderizar o conteúdo principal */
+            flex: 1;
+            padding: 1.5rem;
+        }
+
+        /* =========================
+           CARDS DE MÓDULOS (home)
+           ========================= */
+        .module-card {
+            border-radius: 16px;
+            border: 1px solid #e3e3e3;
+            transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+            cursor: pointer;
+            text-decoration: none;
+            color: inherit;
+        }
+
+        .module-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 18px rgba(0, 0, 0, 0.08);
+            border-color: var(--color-accent-soft);
+        }
+
+        .module-pill {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.15rem 0.6rem;
+            border-radius: 999px;
+            font-size: 0.75rem;
+            background: var(--color-accent-soft);
+            color: var(--color-sidebar-bg);
+            font-weight: 500;
+        }
+
+        .module-status {
+            font-size: 0.75rem;
+        }
+
+        .module-status span {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 4px;
+        }
+        .module-status span.bg-online {
+            background: #28a745;
+        }
+        .module-status span.bg-wip {
+            background: #ffc107;
+        }
+        .module-status span.bg-offline {
+            background: #dc3545;
+        }
+
+        /* Tabelas com header mais “clean” (se você usar em outras telas) */
+        .table-clean thead th {
+            background: #f9fafb;
+            border-bottom: 1px solid #e0e0e0;
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+    </style>
+
+    {% block extra_head %}{% endblock %}
+</head>
+<body>
+
+<div class="app-wrapper">
+
+    <!-- ========================
+         SIDEBAR ESQUERDA
+         ======================== -->
+    <aside class="sidebar">
+
+        <!-- Logo / nome do sistema -->
+        <div class="sidebar-brand">
+            <!-- Aqui você pode trocar pelo seu SVG ou <img> -->
+            <div class="sidebar-logo">
+                OR
+            </div>
+            <div>
+                <a class="nav-link active" href="{% url 'core:home' %}">
+                <p class="sidebar-brand-title mb-0">Orquestrador</p>
+                <small style="opacity: 0.7;">Speed · Tecnologia Informação</small>
+                </a>
+            </div>
+        </div>
+
+        <!-- Bloco do usuário logado -->
+        <div class="sidebar-user">
+            <div class="sidebar-avatar">
+                {# Iniciais do usuário (simplificado). Depois pode usar foto. #}
+                {% if request.user.is_authenticated %}
+                    {{ request.user.username|first|upper }}
+                {% else %}
+                    ?
+                {% endif %}
+            </div>
+            <div>
+                <p class="sidebar-user-name">
+                    {% if request.user.is_authenticated %}
+                        {{ request.user.get_full_name|default:request.user.username }}
+                    {% else %}
+                        Visitante
+                    {% endif %}
+                </p>
+                <p class="sidebar-user-role mb-0">
+                    {% if request.user.is_authenticated %}
+                        Usuário autenticado
+                    {% else %}
+                        Não autenticado
+                    {% endif %}
+                </p>
+            </div>
+        </div>
+
+        <!-- Menu lateral principal -->
+        <nav class="sidebar-nav">
+            {% with url_name=request.resolver_match.url_name app_name=request.resolver_match.app_name %}
+            <ul class="nav flex-column">
+                <!-- Dashboard (home) -->
+                <li class="nav-item">
+                    <a
+                        class="nav-link {% if app_name == 'core' and url_name == 'home' %}active{% endif %}"
+                        href="{% url 'core:home' %}"
+                    >
+                        <span class="me-1">🏠</span>
+                        Pagina Inicial
+                    </a>
+                </li>
+
+                <!-- Automações (qualquer tela do app automation) -->
+                <li class="nav-item">
+                    <a
+                        class="nav-link {% if app_name == 'automation' %}active{% endif %}"
+                        href="{% url 'automation:job_list' %}"
+                    >
+                        ⚙️ Automações
+                    </a>
+                </li>
+
+                <!-- Integrações (placeholder, já deixo preparado) -->
+                <li class="nav-item">
+                    <a
+                        class="nav-link {% if app_name == 'integrations' %}active{% endif %}"
+                        href="#"
+                    >
+                        📊 Integrações
+                    </a>
+                </li>
+
+                <!-- Saúde do Servidor -->
+                <li class="nav-item">
+                    <a
+                        class="nav-link {% if app_name == 'monitorServer' and url_name == 'system_health' %}active{% endif %}"
+                        href="{% url 'monitorServer:system_health' %}"
+                    >
+                        🖥️ Saúde do Servidor
+                    </a>
+                </li>
+            </ul>
+            {% endwith %}
+        </nav>
+
+
+        <!-- Rodapé da sidebar: logout etc. -->
+        <div class="sidebar-footer">
+            <ul class="nav flex-column">
+                {% if request.user.is_authenticated %}
+                    <li class="nav-item">
+                        <a class="nav-link" href="{% url 'accounts:logout' %}">
+                            🚪 Sair
+                        </a>
+                    </li>
+                {% else %}
+                    <li class="nav-item">
+                        <a class="nav-link" href="{% url 'accounts:login' %}">
+                            🔐 Entrar
+                        </a>
+                    </li>
+                {% endif %}
+            </ul>
+        </div>
+
+    </aside>
+
+    <!-- ========================
+         ÁREA PRINCIPAL
+         ======================== -->
+    <div class="main-content">
+
+        <!-- Cabeçalho principal da página (título + ações) -->
+        <header class="main-header">
+            <div>
+                <h1 class="main-header-title">
+                    {% block header_title %}Dashboard{% endblock %}
+                </h1>
+                <p class="main-header-subtitle">
+                    {% block header_subtitle %}Visão geral dos módulos do Orquestrador.{% endblock %}
+                </p>
+            </div>
+
+            <div>
+                {% block header_actions %}
+                    <!-- Botão de ação do header (opcional) -->
+                    <button type="button" class="btn btn-accent btn-sm">
+                        + Novo atalho
+                    </button>
+                {% endblock %}
+            </div>
+        </header>
+
+        <!-- Conteúdo variável das páginas -->
+        <main class="content-wrapper">
+            {% block content %}{% endblock %}
+        </main>
+
+    </div>
+</div>
+
+<!-- JS do Bootstrap (para dropdowns, offcanvas etc. se usar) -->
+<script
+    src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"
+    integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz"
+    crossorigin="anonymous"
+></script>
+
+{% block extra_js %}{% endblock %}
+</body>
+</html>

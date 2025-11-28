@@ -1,0 +1,346 @@
+{# accounts/templates/accounts/login.html #}
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Login · Orquestrador</title>
+
+    <!-- Bootstrap 5 (para grid, botões, etc.) -->
+    <link
+        href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet"
+        integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH"
+        crossorigin="anonymous"
+    >
+
+    <style>
+        /* =========================
+           CORES PADRÃO DO SISTEMA
+           ========================= */
+        :root {
+            --color-bg: #0b0b0b;           /* fundo geral escuro */
+            --color-card-bg: #ffffff;      /* fundo do card */
+            --color-sidebar-bg: #111111;   /* preto principal */
+            --color-accent: #ffc800;       /* amarelo principal */
+            --color-accent-soft: #ffec99;  /* amarelo claro */
+            --color-text: #111111;         /* texto principal */
+            --color-muted: #6c757d;        /* texto secundário */
+        }
+
+        /* Fundo da página: degradê preto */
+        body {
+            margin: 0;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            background: radial-gradient(circle at top left, #333 0, #111 35%, #000 70%);
+        }
+
+        /* Container que centraliza o card */
+        .login-wrapper {
+            width: 100%;
+            max-width: 1100px;
+            padding: 1.5rem;
+        }
+
+        /* Card principal dividido em duas colunas */
+        .login-card {
+            background: var(--color-card-bg);
+            border-radius: 24px;
+            overflow: hidden;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.45);
+            display: flex;
+            min-height: 480px;
+        }
+
+        /* Coluna esquerda: branding/boas vindas */
+        .login-left {
+            width: 38%;
+            background: var(--color-sidebar-bg);
+            color: #ffffff;
+            padding: 2.5rem 2rem;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        .brand-logo {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-bottom: 2rem;
+        }
+
+        .brand-logo-mark {
+            width: 44px;
+            height: 44px;
+            border-radius: 14px;
+            background: var(--color-accent);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--color-sidebar-bg);
+            font-weight: 700;
+            font-size: 1.1rem;
+        }
+
+        .brand-title {
+            font-size: 1.15rem;
+            font-weight: 600;
+            margin-bottom: 0;
+        }
+
+        .brand-subtitle {
+            font-size: 0.85rem;
+            opacity: 0.75;
+            margin-bottom: 0;
+        }
+
+        .login-left h2 {
+            font-size: 1.7rem;
+            margin-bottom: 0.75rem;
+        }
+
+        .login-left p {
+            font-size: 0.9rem;
+            opacity: 0.9;
+        }
+
+        .login-highlight {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            margin-top: 0.8rem;
+            padding: 0.25rem 0.75rem;
+            border-radius: 999px;
+            background: rgba(255, 200, 0, 0.18);
+            color: #ffe57a;
+            font-size: 0.8rem;
+        }
+
+        /* Coluna direita: formulário */
+        .login-right {
+            flex: 1;
+            padding: 2.5rem 2.75rem;
+            background: #f5f5f5;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        .login-right-header h1 {
+            font-size: 1.6rem;
+            margin-bottom: 0.3rem;
+            color: var(--color-text);
+        }
+
+        .login-right-header p {
+            font-size: 0.9rem;
+            color: var(--color-muted);
+            margin-bottom: 1.5rem;
+        }
+
+        /* Formulário de login em si */
+        .login-form label {
+            font-size: 0.85rem;
+            font-weight: 500;
+            color: var(--color-text);
+        }
+
+        .login-form input[type="text"],
+        .login-form input[type="password"] {
+            border-radius: 999px;
+            border: 1px solid #d0d0d0;
+            padding: 0.55rem 1rem;
+            font-size: 0.9rem;
+            width: 100%;
+            outline: none;
+        }
+
+        .login-form input[type="text"]:focus,
+        .login-form input[type="password"]:focus {
+            border-color: var(--color-accent);
+            box-shadow: 0 0 0 0.15rem rgba(255, 200, 0, 0.25);
+        }
+
+        .btn-login {
+            background: var(--color-accent);
+            border-color: var(--color-accent);
+            color: var(--color-sidebar-bg);
+            font-weight: 600;
+            border-radius: 999px;
+            padding: 0.55rem 1.5rem;
+            font-size: 0.95rem;
+        }
+
+        .btn-login:hover {
+            background: #ffdb33;
+            border-color: #ffdb33;
+            color: var(--color-sidebar-bg);
+        }
+
+        .text-link {
+            font-size: 0.82rem;
+            color: var(--color-muted);
+        }
+
+        .text-link a {
+            color: var(--color-accent);
+            text-decoration: none;
+        }
+
+        .text-link a:hover {
+            text-decoration: underline;
+        }
+
+        .errorlist,
+        .non-field-errors {
+            list-style: none;
+            padding-left: 0;
+            margin-bottom: 0.5rem;
+            color: #dc3545;
+            font-size: 0.8rem;
+        }
+
+        .alert-errors {
+            border-radius: 12px;
+        }
+
+        /* Responsivo: empilhar colunas em telas pequenas */
+        @media (max-width: 900px) {
+            .login-card {
+                flex-direction: column;
+            }
+            .login-left {
+                width: 100%;
+                min-height: 190px;
+                padding: 2rem 1.75rem;
+            }
+            .login-right {
+                padding: 2rem 1.75rem;
+            }
+        }
+    </style>
+</head>
+<body>
+
+<div class="login-wrapper">
+    <div class="login-card">
+
+        <!-- ============================
+             COLUNA ESQUERDA (BRANDING)
+             ============================ -->
+        <div class="login-left">
+            <div>
+                <div class="brand-logo">
+                    <div class="brand-logo-mark">
+                        OR
+                    </div>
+                    <div>
+                        <p class="brand-title mb-1">Orquestrador</p>
+                        <p class="brand-subtitle">
+                            Speed · Sistema Informação
+                        </p>
+                    </div>
+                </div>
+
+                <h2>Bem-vindo de volta 👋</h2>
+                <p>
+                    Centralize automações, integrações e monitoramentos da sua
+                    operação em um único painel.
+                </p>
+
+                <div class="login-highlight">
+                    <span>●</span>
+                    <span>Ambiente interno · acesso autenticado</span>
+                </div>
+            </div>
+
+            <div class="mt-4">
+                <small style="opacity: 0.75;">
+                    Dica: use o usuário criado via <strong>Admin</strong>
+                    para o primeiro acesso.
+                </small>
+            </div>
+        </div>
+
+        <!-- ============================
+             COLUNA DIREITA (FORMULÁRIO)
+             ============================ -->
+        <div class="login-right">
+
+            <div class="login-right-header">
+                <h1>Entrar</h1>
+                <p>Informe suas credenciais para acessar o Orquestrador.</p>
+            </div>
+
+            <!-- Erros gerais (ex.: usuário ou senha inválidos) -->
+            {% if form.non_field_errors %}
+                <div class="alert alert-danger alert-errors">
+                    {% for error in form.non_field_errors %}
+                        <div>{{ error }}</div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+
+            <form method="post" class="login-form" novalidate>
+                {% csrf_token %}
+
+                <!-- Campo usuário -->
+                <div class="mb-3">
+                    <label for="{{ form.username.id_for_label }}" class="form-label">
+                        Usuário
+                    </label>
+                    {{ form.username }}
+                    {% if form.username.errors %}
+                        <ul class="errorlist">
+                            {% for error in form.username.errors %}
+                                <li>{{ error }}</li>
+                            {% endfor %}
+                        </ul>
+                    {% endif %}
+                </div>
+
+                <!-- Campo senha -->
+                <div class="mb-3">
+                    <label for "{{ form.password.id_for_label }}" class="form-label">
+                        Senha
+                    </label>
+                    {{ form.password }}
+                    {% if form.password.errors %}
+                        <ul class="errorlist">
+                            {% for error in form.password.errors %}
+                                <li>{{ error }}</li>
+                            {% endfor %}
+                        </ul>
+                    {% endif %}
+                </div>
+
+                <!-- Botão -->
+                <div class="d-grid gap-2 mb-3">
+                    <button type="submit" class="btn btn-login">
+                        Entrar no sistema
+                    </button>
+                </div>
+
+                <p class="text-link mb-0">
+                    Esqueceu a senha? Fale com o administrador do sistema ou do AD.
+                </p>
+            </form>
+        </div>
+
+    </div>
+</div>
+
+<!-- JS do Bootstrap (opcional) -->
+<script
+    src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"
+    integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz"
+    crossorigin="anonymous"
+></script>
+
+</body>
+</html>

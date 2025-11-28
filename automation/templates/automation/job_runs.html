@@ -1,0 +1,240 @@
+{# automation/templates/automation/job_runs.html #}
+{% extends "base.html" %}
+
+{% block title %}{{ job.name }} · Execuções · Orquestrador{% endblock %}
+
+{# CSS extra só para esta página #}
+{% block extra_css %}
+<style>
+  /* Log mais legível e sem quebrar o layout */
+  pre.log-snippet {
+      max-height: 80px;
+      overflow: auto;
+      white-space: pre-wrap;   /* quebra linha */
+      word-break: break-word;  /* quebra palavras grandes */
+      background: #0f0f0f;
+      border-radius: .5rem;
+      padding: .5rem .75rem;
+  }
+
+  /* Responsividade da tabela de execuções */
+  @media (max-width: 768px) {
+      /* Esconde cabeçalho da tabela no mobile */
+      table.runs-table thead {
+          display: none;
+      }
+
+      table.runs-table tbody tr {
+          display: block;
+          margin-bottom: 1rem;
+          border: 1px solid rgba(255, 255, 255, 0.08);
+          border-radius: .75rem;
+          padding: .75rem .75rem .5rem;
+          background: rgba(0, 0, 0, 0.35);
+      }
+
+      table.runs-table tbody td {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-start;
+          font-size: .85rem;
+          border: none !important;
+          padding: .15rem 0;
+      }
+
+      table.runs-table tbody td::before {
+          content: attr(data-label);
+          font-weight: 600;
+          margin-right: .5rem;
+          color: #adb5bd; /* cinza claro */
+      }
+
+      /* Log ocupa a linha toda no mobile */
+      table.runs-table tbody td[data-label="Log (resumo)"] {
+          flex-direction: column;
+      }
+
+      table.runs-table tbody td[data-label="Log (resumo)"]::before {
+          margin-bottom: .25rem;
+      }
+
+      pre.log-snippet {
+          max-height: 120px;
+      }
+  }
+</style>
+{% endblock %}
+
+{% block header_title %}
+    Histórico de execuções – {{ job.name }}
+{% endblock %}
+
+{% block header_subtitle %}
+Automação: <code>{{ job.code }}</code><br>
+<span class="small text-muted">
+    Modelo: pasta + venv · Pasta:
+    <code>automation_jobs/job_{{ job.pk }}/</code> · Script principal:
+    <code>{{ job.external_main_script|default:"main.py" }}</code>
+</span>
+{% endblock %}
+
+
+{% block header_actions %}
+<a href="{% url 'automation:job_list' %}" class="btn btn-outline-light btn-sm">
+    Voltar para automações
+</a>
+<a href="{% url 'automation:job_update' job.pk %}" class="btn btn-accent btn-sm">
+    Editar automação
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="card module-card">
+        <div class="card-body">
+            <h5 class="card-title mb-3">
+                Execuções de <strong>{{ job.name }}</strong>
+            </h5>
+            <p class="text-muted small">
+                Pasta da automação:
+                <code>automation_jobs/job_{{ job.pk }}/</code><br>
+                Script principal:
+                <code>main.py</code><br>
+                Agendamento: {{ job.schedule_description }}<br>
+                Total de execuções: {{ page_obj.paginator.count }}
+            </p>
+            {# ---------------- LISTA DE RUNS ---------------- #}
+            {% if runs %}
+                <div class="table-responsive">
+                    <table class="table table-clean align-middle mb-0 runs-table">
+                        <thead>
+                            <tr>
+                                <th>Início</th>
+                                <th>Fim</th>
+                                <th>Status</th>
+                                <th>Modo</th>
+                                <th>Usuário</th>
+                                <th>Log (resumo)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for run in runs %}
+                                <tr>
+                                    <td data-label="Início">
+                                        {{ run.started_at|date:"d/m/Y H:i:s" }}
+                                    </td>
+                                    <td data-label="Fim">
+                                        {% if run.finished_at %}
+                                            {{ run.finished_at|date:"d/m/Y H:i:s" }}
+                                        {% else %}
+                                            <span class="text-muted">Em execução</span>
+                                        {% endif %}
+                                    </td>
+                                    <td data-label="Status">
+                                        {% if run.status == "success" %}
+                                            <span class="badge bg-success">Sucesso</span>
+                                        {% elif run.status == "failed" %}
+                                            <span class="badge bg-danger">Falha</span>
+                                        {% elif run.status == "running" %}
+                                            <span class="badge bg-warning text-dark">Em execução</span>
+                                        {% endif %}
+                                    </td>
+                                    <td data-label="Modo">
+                                        <small>{{ run.get_triggered_mode_display }}</small>
+                                    </td>
+                                    <td data-label="Usuário">
+                                        {% if run.triggered_by %}
+                                            <small>{{ run.triggered_by.username }}</small>
+                                        {% else %}
+                                            <small class="text-muted">Sistema</small>
+                                        {% endif %}
+                                    </td>
+
+                                    <td data-label="Log (resumo)">
+                                        <pre class="small mb-0 log-snippet">{{ run.log|default:"(sem log)"|truncatechars:500 }}</pre>
+                                    </td>
+
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+
+                {# ---------------- PAGINAÇÃO ---------------- #}
+                {% if is_paginated and page_obj.paginator.num_pages > 1 %}
+                    <nav class="mt-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+                        <div class="small text-muted">
+                            Mostrando
+                            {{ page_obj.start_index }}–{{ page_obj.end_index }}
+                            de {{ page_obj.paginator.count }} execuções
+                        </div>
+
+                        <ul class="pagination pagination-sm mb-0">
+                            {# Primeira #}
+                            {% if page_obj.has_previous %}
+                                <li class="page-item">
+                                    <a class="page-link" href="?page=1">&laquo; Primeira</a>
+                                </li>
+                            {% else %}
+                                <li class="page-item disabled">
+                                    <span class="page-link">&laquo; Primeira</span>
+                                </li>
+                            {% endif %}
+
+                            {# Anterior #}
+                            {% if page_obj.has_previous %}
+                                <li class="page-item">
+                                    <a class="page-link" href="?page={{ page_obj.previous_page_number }}">‹</a>
+                                </li>
+                            {% else %}
+                                <li class="page-item disabled">
+                                    <span class="page-link">‹</span>
+                                </li>
+                            {% endif %}
+
+                            {# Números vizinhos #}
+                            {% for num in page_obj.paginator.page_range %}
+                                {% if num == page_obj.number %}
+                                    <li class="page-item active">
+                                        <span class="page-link">{{ num }}</span>
+                                    </li>
+                                {% elif num >= page_obj.number|add:"-2" and num <= page_obj.number|add:"2" %}
+                                    <li class="page-item">
+                                        <a class="page-link" href="?page={{ num }}">{{ num }}</a>
+                                    </li>
+                                {% endif %}
+                            {% endfor %}
+
+                            {# Próxima #}
+                            {% if page_obj.has_next %}
+                                <li class="page-item">
+                                    <a class="page-link" href="?page={{ page_obj.next_page_number }}">›</a>
+                                </li>
+                            {% else %}
+                                <li class="page-item disabled">
+                                    <span class="page-link">›</span>
+                                </li>
+                            {% endif %}
+
+                            {# Última #}
+                            {% if page_obj.has_next %}
+                                <li class="page-item">
+                                    <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}">Última &raquo;</a>
+                                </li>
+                            {% else %}
+                                <li class="page-item disabled">
+                                    <span class="page-link">Última &raquo;</span>
+                                </li>
+                            {% endif %}
+                        </ul>
+                    </nav>
+                {% endif %}
+            {% else %}
+                <p class="text-muted mb-0">
+                    Esta automação ainda não foi executada.
+                </p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

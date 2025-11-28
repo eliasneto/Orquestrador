@@ -1,0 +1,383 @@
+{# monitor/templates/monitor/system_health.html #}
+{% extends "base.html" %}
+
+{% block title %}Saúde do Servidor · Orquestrador{% endblock %}
+
+{% block header_title %}
+    Saúde do Servidor
+{% endblock %}
+
+{% block header_subtitle %}
+    Monitoramento em tempo quase real da VM/servidor onde o Orquestrador está rodando.
+{% endblock %}
+
+{% block header_actions %}
+    <button type="button" class="btn btn-accent btn-sm" id="btn-refresh">
+        Atualizar agora
+    </button>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+
+    <!-- Linha 1: CPU, Memória, Disco -->
+    <div class="row g-3 mb-3">
+
+        <!-- CPU -->
+        <div class="col-md-4">
+            <div class="card h-100 module-card">
+                <div class="card-body">
+                    <h6 class="text-uppercase text-muted small mb-2">CPU</h6>
+                    <h3 class="mb-1">
+                        <span id="cpu_percent">{{ metrics.cpu.percent }}</span>%
+                    </h3>
+                    <p class="text-muted small mb-0">
+                        Uso médio do processador.
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Memória -->
+        <div class="col-md-4">
+            <div class="card h-100 module-card">
+                <div class="card-body">
+                    <h6 class="text-uppercase text-muted small mb-2">Memória RAM</h6>
+                    <h3 class="mb-1">
+                        <span id="mem_percent">{{ metrics.memory.percent }}</span>%
+                    </h3>
+                    <p class="text-muted small mb-1">
+                        <span id="mem_used">{{ metrics.memory.used_gb }}</span> GB de
+                        <span id="mem_total">{{ metrics.memory.total_gb }}</span> GB em uso.
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Disco -->
+        <div class="col-md-4">
+            <div class="card h-100 module-card">
+                <div class="card-body">
+                    <h6 class="text-uppercase text-muted small mb-2">
+                        Disco ({{ metrics.disk.mount }})
+                    </h6>
+                    <h3 class="mb-1">
+                        <span id="disk_percent">{{ metrics.disk.percent }}</span>%
+                    </h3>
+                    <p class="text-muted small mb-1">
+                        <span id="disk_used">{{ metrics.disk.used_gb }}</span> GB de
+                        <span id="disk_total">{{ metrics.disk.total_gb }}</span> GB em uso.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Linha 2: Processos, Rede, Uptime -->
+    <div class="row g-3 mb-3">
+
+        <!-- Processos -->
+        <div class="col-md-4">
+            <div class="card h-100 module-card">
+                <div class="card-body">
+                    <h6 class="text-uppercase text-muted small mb-2">Processos</h6>
+                    <h3 class="mb-1">
+                        <span id="proc_count">{{ metrics.processes.count }}</span>
+                    </h3>
+                    <p class="text-muted small mb-0">
+                        Processos em execução na máquina.
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Rede -->
+        <div class="col-md-4">
+            <div class="card h-100 module-card">
+                <div class="card-body">
+                    <h6 class="text-uppercase text-muted small mb-2">Rede (desde o boot)</h6>
+                    <p class="mb-1">
+                        <strong>Enviado:</strong>
+                        <span id="net_sent">{{ metrics.network.bytes_sent_mb }}</span> MB
+                    </p>
+                    <p class="mb-1">
+                        <strong>Recebido:</strong>
+                        <span id="net_recv">{{ metrics.network.bytes_recv_mb }}</span> MB
+                    </p>
+                    <p class="text-muted small mb-0">
+                        Para ver “oscilações”, você pode acompanhar o aumento desses valores
+                        a cada atualização.
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Uptime -->
+        <div class="col-md-4">
+            <div class="card h-100 module-card">
+                <div class="card-body">
+                    <h6 class="text-uppercase text-muted small mb-2">Uptime</h6>
+                    <p class="mb-1">
+                        <strong>Tempo ligado:</strong>
+                        <span id="uptime_human">{{ metrics.uptime.human }}</span>
+                    </p>
+                    <p class="mb-1">
+                        <strong>Último boot:</strong>
+                        <span id="uptime_boot">{{ metrics.uptime.boot_time }}</span>
+                    </p>
+                    <p class="text-muted small mb-0">
+                        “Último desligamento” na prática é o momento imediatamente anterior
+                        a este boot.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Linha 3: informações do sistema -->
+    <div class="row g-3">
+        <div class="col-12">
+            <div class="card module-card">
+                <div class="card-body">
+                    <h6 class="text-uppercase text-muted small mb-2">Sistema operacional</h6>
+                    <div class="row small">
+                        <div class="col-md-3">
+                            <strong>Host:</strong> {{ metrics.system.node }}
+                        </div>
+                        <div class="col-md-3">
+                            <strong>SO:</strong> {{ metrics.system.system }} {{ metrics.system.release }}
+                        </div>
+                        <div class="col-md-3">
+                            <strong>Arquitetura:</strong> {{ metrics.system.machine }}
+                        </div>
+                        <div class="col-md-3">
+                            <strong>Processador:</strong> {{ metrics.system.processor|default:"(não informado)" }}
+                        </div>
+                    </div>
+                    <p class="text-muted small mt-2 mb-0">
+                        Última coleta:
+                        <span id="collected_at">{{ metrics.collected_at }}</span>
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+        <!-- Linha 4: Top 10 processos ofensores -->
+    <div class="row g-3 mt-3">
+        <div class="col-12">
+            <div class="card module-card">
+                <div class="card-body">
+                    <h6 class="text-uppercase text-muted small mb-2">
+                        Top 10 processos por uso de CPU
+                    </h6>
+                    <p class="text-muted small">
+                        Apenas leitura; use os botões de encerrar com cuidado (somente usuários staff).
+                    </p>
+
+                    <div class="table-responsive">
+                        <table class="table table-clean align-middle mb-0" id="table-top-processes">
+                            <thead>
+                                <tr>
+                                    <th>PID</th>
+                                    <th>Nome</th>
+                                    <th>Usuário</th>
+                                    <th>CPU</th>
+                                    <th>Memória</th>
+                                    <th class="text-end">Ação</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for p in metrics.top_processes %}
+                                    <tr data-pid="{{ p.pid }}">
+                                        <td>{{ p.pid }}</td>
+                                        <td>{{ p.name }}</td>
+                                        <td>{{ p.username|default:"-" }}</td>
+                                        <td><span class="cpu">{{ p.cpu_percent }}</span> %</td>
+                                        <td><span class="mem">{{ p.memory_mb }}</span> MB</td>
+                                        <td class="text-end">
+                                            {% if request.user.is_staff %}
+                                                <button type="button"
+                                                        class="btn btn-sm btn-outline-danger btn-kill">
+                                                    Encerrar
+                                                </button>
+                                            {% else %}
+                                                <small class="text-muted">Sem permissão</small>
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                {% empty %}
+                                    <tr>
+                                        <td colspan="6">
+                                            <em class="text-muted">Nenhum processo listado.</em>
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+
+    function getCookie(name) {
+        // Função padrão da docs do Django para pegar o CSRF do cookie
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== "") {
+            const cookies = document.cookie.split(";");
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                // Does this cookie string begin with the name we want?
+                if (cookie.substring(0, name.length + 1) === (name + "=")) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
+}
+
+const csrftoken = getCookie("csrftoken");
+
+
+// Pequeno script para atualizar os cards chamando a API JSON.
+// Atualiza quando o usuário clica no botão e a cada 15 segundos.
+
+async function refreshSystemHealth() {
+    try {
+        const resp = await fetch("{% url 'monitorServer:system_health_api' %}");
+        if (!resp.ok) {
+            console.error("Erro ao buscar métricas:", resp.status);
+            return;
+        }
+        const data = await resp.json();
+
+        // Atualiza os elementos na tela
+        document.getElementById("cpu_percent").textContent = data.cpu.percent;
+
+        document.getElementById("mem_percent").textContent = data.memory.percent;
+        document.getElementById("mem_used").textContent = data.memory.used_gb;
+        document.getElementById("mem_total").textContent = data.memory.total_gb;
+
+        document.getElementById("disk_percent").textContent = data.disk.percent;
+        document.getElementById("disk_used").textContent = data.disk.used_gb;
+        document.getElementById("disk_total").textContent = data.disk.total_gb;
+
+        document.getElementById("proc_count").textContent = data.processes.count;
+
+        document.getElementById("net_sent").textContent = data.network.bytes_sent_mb;
+        document.getElementById("net_recv").textContent = data.network.bytes_recv_mb;
+
+        document.getElementById("uptime_human").textContent = data.uptime.human;
+        document.getElementById("uptime_boot").textContent = data.uptime.boot_time;
+
+        document.getElementById("collected_at").textContent = data.collected_at;
+
+                // Atualiza tabela de top processos
+        if (data.top_processes) {
+            const tbody = document.querySelector("#table-top-processes tbody");
+            if (tbody) {
+                tbody.innerHTML = ""; // limpa linhas antigas
+
+                if (data.top_processes.length === 0) {
+                    const tr = document.createElement("tr");
+                    tr.innerHTML = '<td colspan="6"><em class="text-muted">Nenhum processo listado.</em></td>';
+                    tbody.appendChild(tr);
+                } else {
+                    data.top_processes.forEach(function (p) {
+                        const tr = document.createElement("tr");
+                        tr.setAttribute("data-pid", p.pid);
+                        tr.innerHTML = `
+                            <td>${p.pid}</td>
+                            <td>${p.name}</td>
+                            <td>${p.username || "-"}</td>
+                            <td><span class="cpu">${p.cpu_percent}</span> %</td>
+                            <td><span class="mem">${p.memory_mb}</span> MB</td>
+                            <td class="text-end">
+                                {% if request.user.is_staff %}
+                                    <button type="button"
+                                            class="btn btn-sm btn-outline-danger btn-kill">
+                                        Encerrar
+                                    </button>
+                                {% else %}
+                                    <small class="text-muted">Sem permissão</small>
+                                {% endif %}
+                            </td>
+                        `;
+                        tbody.appendChild(tr);
+                    });
+                }
+            }
+        }
+
+    } catch (e) {
+        console.error("Erro na atualização de saúde do servidor:", e);
+    }
+}
+
+async function killProcess(pid) {
+    try {
+        const resp = await fetch("{% url 'monitorServer:kill_process_api' %}", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "X-CSRFToken": csrftoken,
+            },
+            body: JSON.stringify({ pid: pid }),
+        });
+
+        if (!resp.ok) {
+            const errData = await resp.json().catch(() => ({}));
+            const msg = errData.error || ("Erro ao encerrar processo (status " + resp.status + ")");
+            alert(msg);
+            return;
+        }
+
+        const data = await resp.json();
+        alert("Processo PID " + data.pid + " encerrado (ou já não existia).");
+
+        // Atualiza a tela depois de encerrar
+        refreshSystemHealth();
+
+    } catch (e) {
+        console.error("Erro ao chamar kill_process_api:", e);
+        alert("Erro inesperado ao encerrar o processo.");
+    }
+}
+
+// Delegação de evento: clique em qualquer botão ".btn-kill" da tabela
+const tableTopProc = document.getElementById("table-top-processes");
+if (tableTopProc) {
+    tableTopProc.addEventListener("click", function (e) {
+        const btn = e.target.closest(".btn-kill");
+        if (!btn) return;
+
+        const tr = btn.closest("tr");
+        const pid = tr.getAttribute("data-pid");
+        if (!pid) return;
+
+        if (confirm("Deseja realmente encerrar o processo PID " + pid + "?")) {
+            killProcess(pid);
+        }
+    });
+}
+
+
+// Botão "Atualizar agora"
+document.getElementById("btn-refresh").addEventListener("click", function () {
+    refreshSystemHealth();
+});
+
+// Atualização automática a cada 15 segundos
+setInterval(refreshSystemHealth, 15000);
+</script>
+{% endblock %}

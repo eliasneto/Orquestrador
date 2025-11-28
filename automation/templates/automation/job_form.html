@@ -1,0 +1,217 @@
+{# automation/templates/automation/job_form.html #}
+{% extends "base.html" %}
+
+{% block title %}
+    {% if form.instance.pk %}Editar automação{% else %}Nova automação{% endif %} · Orquestrador
+{% endblock %}
+
+{% block header_title %}
+    {% if form.instance.pk %}Editar automação{% else %}Nova automação{% endif %}
+{% endblock %}
+
+{% block header_subtitle %}
+Cadastre uma automação baseada em <strong>pasta + venv</strong>.  
+O Orquestrador criará a pasta <code>automation_jobs/job_&lt;id&gt;/</code>, montará o
+<code>.venv</code> dentro dela e executará o arquivo Python principal informado abaixo.
+{% endblock %}
+
+{% block header_actions %}
+<a href="{% url 'automation:job_list' %}" class="btn btn-outline-light btn-sm">
+    Voltar para lista
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="card module-card">
+        <div class="card-body">
+
+            {# Erros gerais #}
+            {% if form.non_field_errors %}
+                <div class="alert alert-danger">
+                    {% for err in form.non_field_errors %}
+                        <div>{{ err }}</div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+
+            <form method="post" novalidate>
+                {% csrf_token %}
+
+                <div class="row g-4">
+                    {# COLUNA ESQUERDA – Nome + descrição #}
+                    <div class="col-md-7 border-end">
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold">Nome da automação</label>
+                            {{ form.name }}
+                            <div class="form-text">
+                                Ex: <code>Robô IXC – Login Cliente</code>, <code>Importação SAP → BI</code>.
+                            </div>
+                            {% if form.name.errors %}
+                                <div class="text-danger small">
+                                    {{ form.name.errors.0 }}
+                                </div>
+                            {% endif %}
+                        </div>
+
+                        <div class="mb-0">
+                            <label class="form-label fw-semibold">Descrição (opcional)</label>
+                            {{ form.description }}
+                            <div class="form-text">
+                                Explique rapidamente o que essa automação faz
+                                (aparece apenas aqui na interface).
+                            </div>
+                            {% if form.description.errors %}
+                                <div class="text-danger small">
+                                    {{ form.description.errors.0 }}
+                                </div>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    {# COLUNA DIREITA – código, main script, flags #}
+                    <div class="col-md-5">
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold">Código interno</label>
+                            {{ form.code }}
+                            <div class="form-text">
+                                Identificador curto, sem espaços. Ex:
+                                <code>robo_ixc_login_cliente</code>.
+                            </div>
+                            {% if form.code.errors %}
+                                <div class="text-danger small">
+                                    {{ form.code.errors.0 }}
+                                </div>
+                            {% endif %}
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold">Arquivo principal (Python)</label>
+                            {{ form.external_main_script }}
+                            <div class="form-text">
+                                Nome do script dentro da pasta da automação.
+                                Ex.: <code>main.py</code> ou <code>app.py</code>.
+                            </div>
+                            {% if form.external_main_script.errors %}
+                                <div class="text-danger small">
+                                    {{ form.external_main_script.errors.0 }}
+                                </div>
+                            {% endif %}
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="form-check mt-2">
+                                    {{ form.is_active }}
+                                    <label class="form-check-label">Ativa</label>
+                                </div>
+                                <div class="form-text">
+                                    Se desmarcado, o Orquestrador ignora esta automação.
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-check mt-2">
+                                    {{ form.allow_manual }}
+                                    <label class="form-check-label">Permite disparo manual</label>
+                                </div>
+                                <div class="form-text">
+                                    Mostra o botão <strong>Executar agora</strong> na lista.
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {# BLOCO DE AGENDAMENTO (opcional) #}
+                <hr class="my-4">
+
+                <h6 class="mb-3">Agendamento (opcional)</h6>
+
+                <div class="row g-3 align-items-end">
+                    <div class="col-md-3">
+                        <label class="form-label">Tipo de agendamento</label>
+                        {{ form.schedule_type }}
+                        {% if form.schedule_type.errors %}
+                            <div class="text-danger small">
+                                {{ form.schedule_type.errors.0 }}
+                            </div>
+                        {% endif %}
+                    </div>
+
+                    <div class="col-md-4" id="field-one_off_run_at">
+                        <label class="form-label">Data/hora (pontual)</label>
+                        {{ form.one_off_run_at }}
+                        {% if form.one_off_run_at.errors %}
+                            <div class="text-danger small">
+                                {{ form.one_off_run_at.errors.0 }}
+                            </div>
+                        {% endif %}
+                    </div>
+
+                    <div class="col-md-2" id="field-daily-time">
+                        <label class="form-label">Horário diário</label>
+                        {{ form.daily_time }}
+                        {% if form.daily_time.errors %}
+                            <div class="text-danger small">
+                                {{ form.daily_time.errors.0 }}
+                            </div>
+                        {% endif %}
+                    </div>
+
+                    <div class="col-md-3">
+                        <div class="form-text">
+                            Para <strong>Pontual</strong>, preencha apenas a data/hora.  
+                            Para <strong>Diário</strong>, preencha apenas o horário.
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-4 d-flex justify-content-end">
+                    <button type="submit" class="btn btn-accent px-4">
+                        Salvar automação
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    const scheduleTypeSelect = document.getElementById("id_schedule_type");
+    const dailyField        = document.getElementById("field-daily-time");
+    const onceField         = document.getElementById("field-one_off_run_at");
+    const inputOnce         = document.getElementById("id_one_off_run_at");
+    const inputDaily        = document.getElementById("id_daily_time");
+
+    function updateFields() {
+        if (!scheduleTypeSelect) return;
+        const value = scheduleTypeSelect.value;
+
+        if (value === "once") {
+            if (onceField)  onceField.style.display  = "";
+            if (dailyField) dailyField.style.display = "none";
+            if (inputOnce)  inputOnce.disabled  = false;
+            if (inputDaily) inputDaily.disabled = true;
+        } else if (value === "daily") {
+            if (onceField)  onceField.style.display  = "none";
+            if (dailyField) dailyField.style.display = "";
+            if (inputOnce)  inputOnce.disabled  = true;
+            if (inputDaily) inputDaily.disabled = false;
+        } else {
+            if (onceField)  onceField.style.display  = "";
+            if (dailyField) dailyField.style.display = "";
+            if (inputOnce)  inputOnce.disabled  = false;
+            if (inputDaily) inputDaily.disabled = false;
+        }
+    }
+
+    if (scheduleTypeSelect) {
+        scheduleTypeSelect.addEventListener("change", updateFields);
+        updateFields();
+    }
+});
+</script>
+{% endblock %}

@@ -1,0 +1,128 @@
+{# automation/templates/automation/job_list.html #}
+{% extends "base.html" %}
+
+{% block title %}Automações · Orquestrador{% endblock %}
+
+{% block header_title %}Automações{% endblock %}
+{% block header_subtitle %}
+Gerencie scripts externos organizados em pastas com ambiente virtual dedicado (pasta + venv).
+{% endblock %}
+
+{% block header_actions %}
+<a href="{% url 'automation:job_create' %}" class="btn btn-accent btn-sm">
+    + Nova automação
+</a>
+<a href="{% url 'automation:run_list' %}" class="btn btn-outline-light btn-sm">
+    Histórico geral de execuções
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="card module-card">
+        <div class="card-body">
+            <h5 class="card-title mb-3">Automações cadastradas</h5>
+
+            {% if jobs %}
+                <div class="table-responsive">
+                    <table class="table table-clean align-middle mb-0">
+                        <thead>
+                            <tr>
+                                <th>Automação</th>
+                                <th>Script principal (pasta + venv)</th>
+                                <th>Última execução</th>
+                                <th>Execuções</th>
+                                <th>Status</th>
+                                <th class="text-end">Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for job in jobs %}
+                                <tr>
+                                    <td>
+                                        {# Nome da automação agora é um link para o histórico desse job #}
+                                        <a href="{% url 'automation:job_runs' job.pk %}"
+                                           class="text-decoration-none">
+                                            <strong>{{ job.name }}</strong>
+                                        </a><br>
+                                        <small class="text-muted">
+                                            Código: {{ job.code }}
+                                            {% if job.description %}
+                                                · {{ job.description }}
+                                            {% endif %}
+                                        </small>
+                                    </td>
+
+                                    <td>
+                                        <code>{{ job.external_main_script|default:"main.py" }}</code><br>
+                                        <small class="text-muted">
+                                            Pasta: <code>automation_jobs/job_{{ job.id }}</code>
+                                        </small>
+                                    </td>
+
+                                    <td>
+                                        {% if job.last_run_at %}
+                                            <small>
+                                                {{ job.last_run_at|date:"d/m/Y H:i" }}
+                                            </small>
+                                        {% else %}
+                                            <small class="text-muted">Nunca</small>
+                                        {% endif %}
+                                    </td>
+
+                                    <td>
+                                        <small>
+                                            Total: {{ job.runs_total|default:"0" }}
+                                        </small>
+                                    </td>
+
+                                    <td>
+                                        {% if job.is_active %}
+                                            <span class="badge bg-success">Ativa</span>
+                                        {% else %}
+                                            <span class="badge bg-secondary">Desativada</span>
+                                        {% endif %}
+                                        {% if job.allow_manual %}
+                                            <span class="badge bg-info text-dark">Permite manual</span>
+                                        {% else %}
+                                            <span class="badge bg-light text-muted">Somente sistema</span>
+                                        {% endif %}
+                                    </td>
+
+                                <td class="text-end">
+                                    <div class="btn-group btn-group-sm" role="group">
+                                        <a href="{% url 'automation:job_files' job.pk %}"
+                                        class="btn btn-outline-secondary">
+                                            Arquivos
+                                        </a>
+                                        <a href="{% url 'automation:job_update' job.pk %}"
+                                        class="btn btn-outline-secondary">
+                                            Editar
+                                        </a>
+                                        <form method="post"
+                                            action="{% url 'automation:job_run_now' job.pk %}">
+                                            {% csrf_token %}
+                                            <button type="submit"
+                                                    class="btn btn-outline-primary"
+                                                    {% if not job.allow_manual %}disabled{% endif %}>
+                                                Executar agora
+                                            </button>
+                                        </form>
+                                    </div>
+                                </td>
+
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% else %}
+                <p class="text-muted mb-0">
+                    Nenhuma automação cadastrada ainda.
+                    Clique em <strong>+ Nova automação</strong> para começar.
+                </p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
