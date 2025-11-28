@@ -133,71 +133,112 @@ class AutomationJobRunListView(LoginRequiredMixin, ListView):
 class JobFilesView(LoginRequiredMixin, View):
     """
     Tela para gerenciar os arquivos de uma automação (pasta + venv).
-    - GET: mostra arquivos que já estão na pasta
-    - POST: recebe upload de arquivos e grava em automation_jobs/job_<id>/
+    - GET: mostra arquivos que já estão na pasta (raiz ou subpasta)
+    - POST: recebe upload de arquivos e grava na pasta atual
     """
 
     template_name = "automation/job_files.html"
 
-    def _get_job_and_files(self, pk):
+    def _get_job_and_files(self, pk, subdir_param=None):
         """
-        Busca a automação e lista os arquivos da pasta dela.
+        subdir_param = string tipo:
+          - None ou ""        -> pasta raiz (job_X/)
+          - "entrada"         -> job_X/entrada/
+          - "entrada/logs"    -> job_X/entrada/logs/
+
+        Garante que:
+        - não haja path traversal
+        - pasta atual exista
+        - retorna lista de arquivos/pastas com info para o template
         """
         job = get_object_or_404(AutomationJob, pk=pk)
-        job_dir = job.get_job_dir()
-        job_dir.mkdir(parents=True, exist_ok=True)
+
+        base_dir = job.get_job_dir()  # já cria job_X/entrada/ e job_X/saida/
+        base_dir.mkdir(parents=True, exist_ok=True)
+
+        # normaliza a subpasta
+        safe_subdir = (subdir_param or "").strip().strip("\\/")
+
+        current_dir = base_dir
+        if safe_subdir:
+            candidate = base_dir / safe_subdir
+            try:
+                # garante que está dentro de base_dir
+                candidate.relative_to(base_dir)
+            except ValueError:
+                # alguém tentou fazer coisa errada no querystring -> volta pra raiz
+                safe_subdir = ""
+                candidate = base_dir
+
+            candidate.mkdir(parents=True, exist_ok=True)
+            current_dir = candidate
+
+        # string bonitinha para mostrar no header
+        display_path = f"automation_jobs/job_{job.pk}/"
+        if safe_subdir:
+            display_path += safe_subdir + "/"
 
         files = []
-        if job_dir.exists():
-            for entry in sorted(job_dir.iterdir()):
-                # não mostrar a .venv
+        if current_dir.exists():
+            for entry in sorted(current_dir.iterdir()):
+                # não listamos a .venv
                 if entry.name == ".venv":
                     continue
 
                 stat = entry.stat()
+                is_dir = entry.is_dir()
+
+                # se for pasta, já preparamos qual subdir usar ao clicar
+                subdir_for_child = None
+                if is_dir:
+                    subdir_for_child = (
+                        f"{safe_subdir}/{entry.name}" if safe_subdir else entry.name
+                    )
+
                 files.append(
                     {
                         "name": entry.name,
-                        "is_dir": entry.is_dir(),
-                        "size": None if entry.is_dir() else stat.st_size,
+                        "is_dir": is_dir,
+                        "size": None if is_dir else stat.st_size,
                         "modified": timezone.datetime.fromtimestamp(
                             stat.st_mtime,
                             tz=timezone.get_current_timezone(),
                         ),
+                        "subdir_param": subdir_for_child,
                     }
                 )
 
-        return job, job_dir, files
+        return job, base_dir, current_dir, display_path, files
 
-    def get(self, request, pk, *args, **kwargs):
-        """
-        Mostra o formulário de upload + lista de arquivos atuais.
-        """
-        job, job_dir, files = self._get_job_and_files(pk)
+    def get(self, request, pk):
+        subdir = request.GET.get("subdir", "")
+        job, base_dir, current_dir, display_path, files = self._get_job_and_files(
+            pk, subdir
+        )
         form = JobFileUploadForm()
-        context = {"job": job, "files": files, "form": form}
+        context = {
+            "job": job,
+            "files": files,
+            "form": form,
+            "current_path_display": display_path,
+        }
         return render(request, self.template_name, context)
 
-    def post(self, request, pk, *args, **kwargs):
-        """
-        Recebe os arquivos enviados e grava na pasta do job.
-        """
-        job, job_dir, files = self._get_job_and_files(pk)
+    def post(self, request, pk):
+        subdir = request.GET.get("subdir", "")
+        job, base_dir, current_dir, display_path, files = self._get_job_and_files(
+            pk, subdir
+        )
         form = JobFileUploadForm(request.POST, request.FILES)
 
         if form.is_valid():
-            uploaded_files = form.cleaned_data["files"]  # <- já vem como lista
-
-            if not uploaded_files:
-                # Nenhum arquivo selecionado
-                form.add_error("files", "Selecione pelo menos um arquivo.")
-                context = {"job": job, "files": files, "form": form}
-                return render(request, self.template_name, context)
-
+            uploaded_files = request.FILES.getlist("files")
             count = 0
+
             for f in uploaded_files:
-                safe_name = Path(f.name).name  # evita paths malucos
-                dest_path = job_dir / safe_name
+                # protege contra caminhos estranhos no nome
+                safe_name = Path(f.name).name
+                dest_path = current_dir / safe_name
 
                 with dest_path.open("wb+") as dest:
                     for chunk in f.chunks():
@@ -207,13 +248,19 @@ class JobFilesView(LoginRequiredMixin, View):
 
             messages.success(
                 request,
-                f"{count} arquivo(s) enviado(s) para a pasta {job.workspace_folder_name}.",
+                f"{count} arquivo(s) enviado(s) para a pasta {display_path}.",
             )
-            return redirect("automation:job_files", pk=job.pk)
+            return redirect(f"{reverse_lazy('automation:job_files', kwargs={'pk': job.pk})}?subdir={subdir}")
 
-        # Form inválido → volta com erros
-        context = {"job": job, "files": files, "form": form}
+        # Se o form for inválido, re-renderiza com erros
+        context = {
+            "job": job,
+            "files": files,
+            "form": form,
+            "current_path_display": display_path,
+        }
         return render(request, self.template_name, context)
+
 
 
 

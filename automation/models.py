@@ -119,7 +119,19 @@ class AutomationJob(models.Model):
 
     # Pasta física da automação: automation_jobs/job_<id>/
     def get_job_dir(self) -> Path:
-        return Path(settings.BASE_DIR) / "automation_jobs" / f"job_{self.pk}"
+        """
+        Pasta física da automação: automation_jobs/job_<id>/
+        Já garante também as subpastas 'entrada' e 'saida'.
+        """
+        base = Path(settings.BASE_DIR) / "automation_jobs" / f"job_{self.pk}"
+        base.mkdir(parents=True, exist_ok=True)
+
+        # subpastas padrão
+        (base / "entrada").mkdir(exist_ok=True)
+        (base / "saida").mkdir(exist_ok=True)
+
+        return base
+
 
     @property
     def workspace_folder_name(self) -> str:
