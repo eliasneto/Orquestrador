@@ -76,18 +76,21 @@ Gerencie scripts externos organizados em pastas com ambiente virtual dedicado (p
                                         </small>
                                     </td>
 
-                                    <td>
-                                        {% if job.is_active %}
-                                            <span class="badge bg-success">Ativa</span>
-                                        {% else %}
-                                            <span class="badge bg-secondary">Desativada</span>
-                                        {% endif %}
-                                        {% if job.allow_manual %}
-                                            <span class="badge bg-info text-dark">Permite manual</span>
-                                        {% else %}
-                                            <span class="badge bg-light text-muted">Somente sistema</span>
-                                        {% endif %}
-                                    </td>
+                                <td>
+                                    {% if job.has_running %}
+                                        <span class="badge bg-warning text-dark me-1">Em execução</span>
+                                    {% endif %}
+
+                                    {% if job.is_active %}
+                                        <span class="badge bg-success">Ativa</span>
+                                    {% else %}
+                                        <span class="badge bg-secondary">Inativa</span>
+                                    {% endif %}
+
+                                    {% if job.allow_manual %}
+                                        <span class="badge bg-info text-dark">Permite manual</span>
+                                    {% endif %}
+                                </td>
 
                                 <td class="text-end">
                                     <div class="btn-group btn-group-sm" role="group">
@@ -95,21 +98,33 @@ Gerencie scripts externos organizados em pastas com ambiente virtual dedicado (p
                                         class="btn btn-outline-secondary">
                                             Arquivos
                                         </a>
+
                                         <a href="{% url 'automation:job_update' job.pk %}"
                                         class="btn btn-outline-secondary">
                                             Editar
                                         </a>
-                                        <form method="post"
-                                            action="{% url 'automation:job_run_now' job.pk %}">
-                                            {% csrf_token %}
-                                            <button type="submit"
-                                                    class="btn btn-outline-primary"
-                                                    {% if not job.allow_manual %}disabled{% endif %}>
-                                                Executar agora
-                                            </button>
-                                        </form>
+
+                                        {% if job.allow_manual %}
+                                            {% if job.has_running %}
+                                                {# Já está rodando → desativa botão #}
+                                                <button class="btn btn-outline-secondary" disabled>
+                                                    Em execução…
+                                                </button>
+                                            {% else %}
+                                                <form method="post"
+                                                    action="{% url 'automation:job_run_now' job.pk %}"
+                                                    class="d-inline">
+                                                    {% csrf_token %}
+                                                    <button type="submit"
+                                                            class="btn btn-outline-primary">
+                                                        Executar agora
+                                                    </button>
+                                                </form>
+                                            {% endif %}
+                                        {% endif %}
                                     </div>
                                 </td>
+
 
                                 </tr>
                             {% endfor %}

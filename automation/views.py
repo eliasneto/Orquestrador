@@ -20,7 +20,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse_lazy
 from django.views.decorators.http import require_POST
 from django.contrib.auth.decorators import login_required
-from django.db.models import Count
+from django.db.models import Count, Q
 
 from .forms import AutomationJobForm, JobFileUploadForm
 from .models import AutomationJob, AutomationRun
@@ -32,22 +32,24 @@ from .services import execute_job_async
 #  Listagem e cadastro
 # =========================
 
+# automation/views.py
+
 class AutomationJobListView(LoginRequiredMixin, ListView):
     """
     Lista todas as automações cadastradas.
     """
 
     model = AutomationJob
-    template_name = "automation/job_list.html"
+    template_name = "automation/job_list.html"  # 👈 ESSENCIAL
     context_object_name = "jobs"
 
     def get_queryset(self):
-        # Anota o total de execuções por job (AutomationRun)
         return (
             AutomationJob.objects
             .annotate(runs_total=Count("runs"))
             .order_by("name")
         )
+
 
 
 class AutomationJobCreateView(LoginRequiredMixin, CreateView):
@@ -272,17 +274,21 @@ class JobFilesView(LoginRequiredMixin, View):
 @require_POST
 @login_required
 def run_job_now(request, pk):
-    """
-    Dispara uma automação manualmente a partir do frontend.
-
-    A execução é feita em background (thread), para não travar
-    o navegador enquanto o script roda.
-    """
+    ...
     job = get_object_or_404(AutomationJob, pk=pk)
 
     if not job.allow_manual:
-        messages.error(
-            request, "Esta automação não permite disparo manual."
+        messages.error(request, "Esta automação não permite disparo manual.")
+        return redirect("automation:job_list")
+
+    # 🚫 NOVO: impede execução concorrente
+    if AutomationRun.objects.filter(
+        job=job,
+        status=AutomationRun.Status.RUNNING,
+    ).exists():
+        messages.warning(
+            request,
+            "Esta automação já está em execução. Aguarde a conclusão antes de disparar novamente.",
         )
         return redirect("automation:job_list")
 

@@ -192,6 +192,19 @@ class AutomationJob(models.Model):
             return self.daily_time.strftime("%H:%M")
 
         return "-"
+    
+    @property
+    def has_running(self) -> bool:
+        """
+        Indica se existe alguma execução desta automação ainda em andamento.
+        Usa a anotação 'runs_running' se ela existir (lista), senão consulta direto.
+        """
+        value = getattr(self, "runs_running", None)
+        if value is not None:
+            return value > 0
+
+        from .models import AutomationRun  # evita import circular
+        return self.runs.filter(status=AutomationRun.Status.RUNNING).exists()    
 
     # Hoje o scheduler ainda não está usando isso – deixo falso para não confundir.
     def is_due(self, now: dt.datetime) -> bool:
