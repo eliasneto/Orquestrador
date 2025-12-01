@@ -85,6 +85,21 @@ O Orquestrador criará a pasta <code>automation_jobs/job_&lt;id&gt;/</code>, mon
                             {% endif %}
                         </div>
 
+                        {# 🔹 NOVO BLOCO: SETOR #}
+                        <div class="col-md-4">
+                            <label class="form-label">Setor</label>
+                            {{ form.sector }}
+                            <small class="text-muted d-block">
+                                Define qual área “dona” dessa automação.
+                            </small>
+                            {% if form.sector.errors %}
+                                <div class="text-danger small">
+                                    {{ form.sector.errors.0 }}
+                                </div>
+                            {% endif %}
+                        </div>
+
+
                         <div class="mb-3">
                             <label class="form-label fw-semibold">Arquivo principal (Python)</label>
                             {{ form.external_main_script }}

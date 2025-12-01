@@ -10,6 +10,7 @@ class AutomationJobForm(forms.ModelForm):
             "name",
             "description",
             "code",
+            "sector",
             "external_main_script",
             "is_active",
             "allow_manual",
@@ -28,6 +29,14 @@ class AutomationJobForm(forms.ModelForm):
                     "placeholder": "Explique rapidamente o que essa automação faz.",
                 }
             ),
+
+                        # 👉 AQUI deixamos o Setor com cara de Bootstrap, igual aos outros
+            "sector": forms.Select(
+                attrs={
+                    "class": "form-select",   # mesmo estilo do schedule_type
+                }
+            ),
+            
             "code": forms.TextInput(
                 attrs={"class": "form-control", "placeholder": "robo_ixc_login_cliente"}
             ),

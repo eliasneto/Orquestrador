@@ -58,6 +58,14 @@ class AutomationJob(models.Model):
         ONCE = "once", "Pontual"
         DAILY = "daily", "Diário"
 
+    # 🔹 NOVO: tipos de setor
+    class Sector(models.TextChoices):
+        GERAL = "geral", "Geral"
+        FINANCEIRO = "financeiro", "Financeiro"
+        COMERCIAL = "comercial", "Comercial"
+        TI = "ti", "TI"
+        # pode ir acrescentando mais se precisar        
+
     name = models.CharField("Nome da automação", max_length=200)
 
     description = models.TextField(
@@ -71,6 +79,15 @@ class AutomationJob(models.Model):
         max_length=100,
         unique=True,
         help_text="Identificador curto, sem espaços. Ex: robo_ixc_login_cliente",
+    )
+
+    # 🔹 NOVO: setor da automação
+    sector = models.CharField(
+       "Setor",
+        max_length=50,
+        choices=Sector.choices,
+        default=Sector.GERAL,
+        help_text="Setor responsável pela automação (usado para filtros futuros).",
     )
 
     # Arquivo Python dentro da pasta automation_jobs/job_<id>/
