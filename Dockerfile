@@ -1,27 +1,31 @@
-# Imagem base do Python (Linux)
+# Imagem base do Python
 FROM python:3.12-slim
 
-# Evita criar .pyc e força logs sem buffer
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+# Evita criar .pyc e deixa logs sem buffer
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
 
 # Diretório de trabalho dentro do container
 WORKDIR /app
 
-# Instalar dependências de sistema (para psutil e etc.)
+# Instalar dependências do sistema para compilar mysqlclient
 RUN apt-get update && apt-get install -y \
     build-essential \
- && rm -rf /var/lib/apt/lists/*
+    default-libmysqlclient-dev \
+    pkg-config \
+    && rm -rf /var/lib/apt/lists/*
 
-# Copia os requisitos e instala as libs Python
+# Copia requirements e instala dependências Python
 COPY requirements.txt /app/
-RUN pip install --no-cache-dir -r requirements.txt
 
-# Copia TODO o código do projeto
+RUN pip install --upgrade pip && \
+    pip install -r requirements.txt
+
+# Copia o resto do código
 COPY . /app/
 
-# Expõe a porta 8000 (a mesma que o Django usa)
+# Expor porta 8000 (Django/Gunicorn)
 EXPOSE 8000
 
-# Comando padrão: rodar o servidor Django escutando em 0.0.0.0
-CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]
+# Comando padrão (pode ser sobrescrito no docker-compose)
+CMD ["gunicorn", "orquestrador.wsgi:application", "--bind", "0.0.0.0:8000"]

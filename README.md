@@ -29,8 +29,6 @@ No **Windows** (CMD ou PowerShell), dentro da pasta do projeto:
 ```bash
 python -m venv .venv
 
-
-
 ### Ativar ambiente virtual
 .\.venv\Scripts\activate
 
