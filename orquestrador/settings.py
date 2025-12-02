@@ -163,7 +163,7 @@ STATIC_URL = "static/"
 
 # (opcionais, mas já deixo prontos para ambiente real)
 STATICFILES_DIRS = [
-    BASE_DIR / "static",
+    BASE_DIR / 'orquestrador' / "static",
 ]
 STATIC_ROOT = BASE_DIR / "staticfiles"
 

@@ -106,22 +106,39 @@ Gerencie scripts externos organizados em pastas com ambiente virtual dedicado (p
 
                                         {% if job.allow_manual %}
                                             {% if job.has_running %}
-                                                {# Já está rodando → desativa botão #}
-                                                <button class="btn btn-outline-secondary" disabled>
-                                                    Em execução…
-                                                </button>
-                                            {% else %}
+                                                {# Quando estiver rodando, mostra botão de PARAR #}
                                                 <form method="post"
-                                                    action="{% url 'automation:job_run_now' job.pk %}"
+                                                    action="{% url 'automation:job_stop' job.pk %}"
                                                     class="d-inline">
                                                     {% csrf_token %}
                                                     <button type="submit"
-                                                            class="btn btn-outline-primary">
-                                                        Executar agora
+                                                            class="btn btn-outline-danger">
+                                                        Parar execução
                                                     </button>
                                                 </form>
+                                            {% else %}
+                                                {# Não está rodando: olha se está ativa #}
+                                                {% if job.is_active %}
+                                                    <form method="post"
+                                                        action="{% url 'automation:job_run_now' job.pk %}"
+                                                        class="d-inline">
+                                                        {% csrf_token %}
+                                                        <button type="submit"
+                                                                class="btn btn-outline-primary">
+                                                            Executar agora
+                                                        </button>
+                                                    </form>
+                                                {% else %}
+                                                    <button class="btn btn-outline-secondary"
+                                                            disabled
+                                                            title="Automação inativa. Ative para executar.">
+                                                        Executar (inativa)
+                                                    </button>
+                                                {% endif %}
                                             {% endif %}
                                         {% endif %}
+
+
                                     </div>
                                 </td>
 

@@ -102,11 +102,38 @@ def get_venv_python(job_folder: Path, buffer: io.StringIO) -> Path:
         f"[{timezone.now().isoformat()}] ▶️ Comando venv: {' '.join(cmd)}\n"
     )
 
-    proc = subprocess.run(
-        cmd,
-        capture_output=True,
+    # Execução do script (agora com Popen pra podermos cancelar)
+    proc = subprocess.Popen(
+        [venv_python, script_path],
+        cwd=job_folder,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
         text=True,
     )
+
+    # 👇 Salva o PID no registro da execução
+    run.external_pid = proc.pid  # type: ignore[attr-defined]
+    run.save(update_fields=["external_pid"])
+
+    # Espera o processo terminar e captura saída
+    stdout, stderr = proc.communicate()
+
+    if stdout:
+        buffer.write(f"[{timezone.now().isoformat()}] ----- STDOUT -----\n")
+        buffer.write(stdout + "\n")
+    if stderr:
+        buffer.write(f"[{timezone.now().isoformat()}] ----- STDERR -----\n")
+        buffer.write(stderr + "\n")
+
+    buffer.write(
+        f"[{timezone.now().isoformat()}] 🏁 Script terminou com código de saída: {proc.returncode}\n"
+    )
+
+    if proc.returncode != 0:
+        raise RuntimeError(
+            f"Script terminou com erro (código {proc.returncode}). Verifique STDOUT/STDERR acima."
+        )
+
 
     if proc.stdout:
         buffer.write(f"[{timezone.now().isoformat()}] venv STDOUT:\n{proc.stdout}\n")
@@ -195,6 +222,10 @@ def execute_external_folder_job(
     job_folder = get_job_folder(job)
 
     # 1) Venv
+    buffer.write(
+        f"[{timezone.now().isoformat()}] 📁 Pasta do job: {job_folder}\n"
+    )
+
     venv_python = get_venv_python(job_folder, buffer)
 
     # 2) Instalar requirements, se existir
@@ -216,21 +247,30 @@ def execute_external_folder_job(
             f"Script principal '{main_script_name}' não encontrado em {job_folder}"
         )
 
-    # Execução do script
-    proc = subprocess.run(
+    # ==========================
+    # Execução do script (Popen para permitir cancelamento)
+    # ==========================
+    proc = subprocess.Popen(
         [str(venv_python), str(script_path)],
         cwd=str(job_folder),
-        capture_output=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
         text=True,
     )
 
-    # STDOUT / STDERR
-    if proc.stdout:
+    # 👇 Salva o PID no registro da execução
+    run.external_pid = proc.pid
+    run.save(update_fields=["external_pid"])
+
+    # Espera terminar e captura STDOUT/STDERR
+    stdout, stderr = proc.communicate()
+
+    if stdout:
         buffer.write(f"[{timezone.now().isoformat()}] ----- STDOUT -----\n")
-        buffer.write(proc.stdout + "\n")
-    if proc.stderr:
+        buffer.write(stdout + "\n")
+    if stderr:
         buffer.write(f"[{timezone.now().isoformat()}] ----- STDERR -----\n")
-        buffer.write(proc.stderr + "\n")
+        buffer.write(stderr + "\n")
 
     buffer.write(
         f"[{timezone.now().isoformat()}] 🏁 Script terminou com código de saída: {proc.returncode}\n"

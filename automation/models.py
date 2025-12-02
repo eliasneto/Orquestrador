@@ -272,6 +272,14 @@ class AutomationRun(models.Model):
         help_text="Saída de log (stdout/erros) capturada durante a execução.",
     )
 
+    # 👇 NOVO: guarda o PID do processo externo
+    external_pid = models.IntegerField(
+        "PID do processo externo",
+        null=True,
+        blank=True,
+        help_text="PID do processo da automação (para permitir cancelamento).",
+    )
+
     created_at = models.DateTimeField("Registrado em", auto_now_add=True)
 
     class Meta:

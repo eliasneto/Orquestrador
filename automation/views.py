@@ -21,7 +21,8 @@ from django.urls import reverse_lazy
 from django.views.decorators.http import require_POST
 from django.contrib.auth.decorators import login_required
 from django.db.models import Count, Q
-
+import os
+import signal 
 from .forms import AutomationJobForm, JobFileUploadForm
 from .models import AutomationJob, AutomationRun
 from .services import execute_job_async
@@ -277,11 +278,20 @@ def run_job_now(request, pk):
     ...
     job = get_object_or_404(AutomationJob, pk=pk)
 
+
+    # 🚫 NOVO: não deixa rodar se estiver inativa
+    if not job.is_active:
+        messages.error(
+            request,
+            "Esta automação está inativa. Ative-a antes de executar manualmente."
+        )
+        return redirect("automation:job_list")
+
     if not job.allow_manual:
         messages.error(request, "Esta automação não permite disparo manual.")
         return redirect("automation:job_list")
 
-    # 🚫 NOVO: impede execução concorrente
+    # 🚫 impede execução concorrente
     if AutomationRun.objects.filter(
         job=job,
         status=AutomationRun.Status.RUNNING,
@@ -306,3 +316,73 @@ def run_job_now(request, pk):
     )
 
     return redirect("automation:job_list")
+
+    # Dispara em segundo plano
+    execute_job_async(
+        job,
+        triggered_by=request.user,
+        triggered_mode=AutomationRun.TriggerMode.MANUAL,
+    )
+
+    messages.success(
+        request,
+        f"Automação '{job.name}' enviada para execução em segundo plano. "
+        "Atualize a página em alguns instantes para ver o status.",
+    )
+
+    return redirect("automation:job_list")
+
+
+@require_POST
+@login_required
+@require_POST
+@login_required
+def stop_job(request, pk):
+    job = get_object_or_404(AutomationJob, pk=pk)
+
+    # Procura uma execução em andamento desse job
+    run = AutomationRun.objects.filter(
+        job=job,
+        status=AutomationRun.Status.RUNNING,
+    ).first()
+
+    if not run:
+        messages.warning(
+            request,
+            "Nenhuma execução em andamento para esta automação."
+        )
+        return redirect("automation:job_list")
+
+    if not run.external_pid:
+        messages.error(
+            request,
+            "PID do processo não está registrado; não foi possível solicitar parada."
+        )
+        return redirect("automation:job_list")
+
+    try:
+        # Tenta matar o processo
+        os.kill(run.external_pid, signal.SIGTERM)
+
+        # Marca no log e atualiza status
+        now = timezone.now()
+        extra_log = (
+            f"\n[{now.isoformat()}] ❌ Execução interrompida manualmente pelo usuário "
+            f"{request.user.username}.\n"
+        )
+
+        run.log = (run.log or "") + extra_log
+        run.status = AutomationRun.Status.FAILED
+        run.finished_at = now
+        run.save(update_fields=["log", "status", "finished_at"])
+
+        messages.success(request, "Parada da automação solicitada com sucesso.")
+    except ProcessLookupError:
+        # Processo já tinha morrido
+        messages.warning(
+            request,
+            "O processo já não estava mais em execução (foi finalizado antes)."
+        )
+
+    return redirect("automation:job_list")
+

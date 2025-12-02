@@ -1,4 +1,6 @@
 {# templates/base.html #}
+{% load static %}
+
 <!DOCTYPE html>
 <html lang="pt-br">
 <head>
@@ -45,41 +47,51 @@
         /* =========================
            SIDEBAR
            ========================= */
+        /* força a sidebar a ter essa largura no flex */
         .sidebar {
-            width: 260px;                  /* largura fixa da barra lateral */
+            flex: 0 0 320px;   /* 320, 350, 400... o que você quiser */
             background: var(--color-sidebar-bg);
             color: #ffffff;
             display: flex;
             flex-direction: column;
-            padding: 1.5rem 1rem;
+            padding: 1.5rem 1.25rem;
         }
 
         .sidebar-brand {
             display: flex;
-            align-items: center;
-            gap: 0.75rem;
+            flex-direction: column;   /* 👈 empilha logo e texto na vertical */
+            align-items: flex-start;  /* ou center, se quiser tudo centralizado */
+            gap: 0.5rem;
             margin-bottom: 2rem;
         }
 
+        /* Deixa a logo maior e sem fundo amarelo (se quiser) */
         .sidebar-logo {
-            /* “logo” simples em forma de quadrado amarelo
-               você pode trocar por uma imagem <img> depois */
-            width: 40px;
-            height: 40px;
+            width: 160px;      /* aumenta o tamanho da área da logo */
+            height: 80px;
             border-radius: 8px;
-            background: var(--color-accent);
             display: flex;
             align-items: center;
             justify-content: center;
-            font-weight: 700;
-            color: var(--color-sidebar-bg);
-            font-size: 1.1rem;
+            overflow: hidden;
+            /* background: none;  se não quiser o quadrado amarelo */
         }
 
-        .sidebar-brand-title {
-            font-size: 1.1rem;
-            font-weight: 600;
-            margin: 0;
+        
+        .sidebar-logo img {
+            max-width: 100%;
+            max-height: 100%;
+            display: block;
+        }
+
+        .sidebar-brand {
+            display: flex;
+            flex-direction: column;
+            align-items: center;   /* 👈 centraliza logo + textos na horizontal */
+            gap: 0.5rem;
+            margin-bottom: 2rem;
+            text-align: center;    /* 👈 centraliza o texto embaixo da logo */
+            
         }
 
         .sidebar-user {
@@ -279,8 +291,9 @@
         <div class="sidebar-brand">
             <!-- Aqui você pode trocar pelo seu SVG ou <img> -->
             <div class="sidebar-logo">
-                OR
+                <img src="{% static 'img/Speed_v02-02.png' %}" alt="Orquestrador" style="max-width: 100%; max-height: 100%;">
             </div>
+
             <div>
                 <a class="nav-link active" href="{% url 'core:home' %}">
                 <p class="sidebar-brand-title mb-0">Orquestrador</p>

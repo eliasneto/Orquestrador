@@ -8,6 +8,7 @@ from .views import (
     AutomationJobRunListView,  # 👈 NOVO
     JobFilesView,  
     run_job_now,
+    stop_job,
 )
 
 app_name = "automation"
@@ -17,6 +18,7 @@ urlpatterns = [
     path("jobs/new/", AutomationJobCreateView.as_view(), name="job_create"),
     path("jobs/<int:pk>/edit/", AutomationJobUpdateView.as_view(), name="job_update"),
     path("jobs/<int:pk>/run/", run_job_now, name="job_run_now"),
+    path("jobs/<int:pk>/stop/", stop_job, name="job_stop"),  # 👈 NOVO
 
     # 👇 Histórico de UM job específico
     path("jobs/<int:pk>/runs/", AutomationJobRunListView.as_view(), name="job_runs"),
