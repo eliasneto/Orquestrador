@@ -1,4 +1,3 @@
-# automation/management/commands/automation_scheduler.py
 """
 Comando simples de scheduler para executar automações agendadas.
 
@@ -7,16 +6,14 @@ Uso:
     python manage.py automation_scheduler --interval 30
 
 Ele roda em loop, a cada N segundos, verificando quais jobs
-estão "vencidos" (job.is_due(now)) e executando-os.
+têm next_run_at vencido e disparando-os.
 """
 
 import time
 
 from django.core.management.base import BaseCommand
-from django.utils import timezone
 
-from automation.models import AutomationJob
-from automation.services import execute_job
+from automation.services import run_pending_jobs  # ⬅️ NOVO
 
 
 class Command(BaseCommand):
@@ -40,18 +37,8 @@ class Command(BaseCommand):
 
         try:
             while True:
-                now = timezone.now()
-                jobs = AutomationJob.objects.filter(is_enabled=True)
-
-                for job in jobs:
-                    if job.is_due(now):
-                        self.stdout.write(
-                            self.style.WARNING(
-                                f"Executando job {job.id} - {job.name}"
-                            )
-                        )
-                        execute_job(job, triggered_by=None)
-
+                # Chama a função que dispara os jobs pendentes
+                run_pending_jobs()
                 time.sleep(interval)
 
         except KeyboardInterrupt:

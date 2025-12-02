@@ -29,12 +29,10 @@ import threading
 import traceback
 from pathlib import Path
 from typing import Optional
-
 from django.conf import settings
 from django.utils import timezone
-
 from .models import AutomationJob, AutomationRun
-
+#from .runner import disparar_job_externo  # sua função que dispara a automação
 
 # ==========================
 #  Caminhos básicos
@@ -43,6 +41,41 @@ from .models import AutomationJob, AutomationRun
 # Raiz onde ficarão as pastas das automações
 AUTOMATION_ROOT = Path(settings.BASE_DIR) / "automation_jobs"
 AUTOMATION_ROOT.mkdir(parents=True, exist_ok=True)
+
+# automation/services.py
+
+def run_pending_jobs():
+    """
+    Dispara automaticamente os jobs agendados cujo next_run_at já passou.
+    Deve ser chamada periodicamente (ex.: a cada 1 minuto).
+    """
+    now = timezone.now()
+
+    # Busca jobs ativos que têm próxima execução definida e já vencida
+    jobs = (
+        AutomationJob.objects.filter(is_active=True)
+        .exclude(next_run_at__isnull=True)
+        .filter(next_run_at__lte=now)
+    )
+
+    for job in jobs:
+        # Evita concorrência: se já tem uma execução rodando, pula esse job
+        if AutomationRun.objects.filter(
+            job=job,
+            status=AutomationRun.Status.RUNNING,
+        ).exists():
+            continue
+
+        # Dispara a execução em modo "agendado"
+        execute_job_async(
+            job,
+            triggered_by=None,
+            triggered_mode=AutomationRun.TriggerMode.SCHEDULE,
+        )
+
+        # Calcula e salva a próxima execução
+        job.next_run_at = job.compute_next_run(from_dt=now)
+        job.save(update_fields=["next_run_at"])
 
 
 def get_job_folder(job: AutomationJob) -> Path:
@@ -70,91 +103,73 @@ def get_job_folder(job: AutomationJob) -> Path:
 
     return job_folder
 
+def _log(buffer, msg: str):
+    """
+    Escreve no buffer de log tanto se for StringIO quanto se for lista.
+    """
+    line = msg + "\n"
+    if hasattr(buffer, "write"):
+        buffer.write(line)      # StringIO, arquivo etc.
+    elif hasattr(buffer, "append"):
+        buffer.append(line)     # lista de strings
+    # se não for nenhum dos dois, ignora silenciosamente
 
-def get_venv_python(job_folder: Path, buffer: io.StringIO) -> Path:
+
+def get_venv_python(job_folder: Path, buffer) -> str:
     """
-    Garante que exista um .venv dentro da pasta da automação
-    e devolve o caminho do python desse venv.
+    Garante que exista um .venv dentro da pasta do job e
+    retorna o caminho para o executável python desse venv.
     """
+
+    job_folder = Path(job_folder)
     venv_dir = job_folder / ".venv"
 
-    # Detecta se já existe
-    if sys.platform.startswith("win"):
-        python_path = venv_dir / "Scripts" / "python.exe"
+    # Caminho do python *dentro* do venv
+    if os.name == "nt":
+        venv_python = venv_dir / "Scripts" / "python.exe"
     else:
-        python_path = venv_dir / "bin" / "python"
+        venv_python = venv_dir / "bin" / "python"
 
-    if python_path.exists():
-        buffer.write(
-            f"[{timezone.now().isoformat()}] 📦 Ambiente virtual já existe: {python_path.parent}\n"
+    # Se o venv já existir, só registra no log e retorna
+    if venv_python.exists():
+        _log(
+            buffer,
+            f"[{timezone.now().isoformat()}] 📦 Ambiente virtual já existe: {venv_python}",
         )
-        return python_path
+        return str(venv_python)
 
-    # Criar venv
-    buffer.write(
-        f"[{timezone.now().isoformat()}] 📦 Criando ambiente virtual em: {venv_dir}\n"
+    # Senão, cria o venv usando o python atual do Django (sys.executable)
+    base_python = sys.executable
+    _log(
+        buffer,
+        f"[{timezone.now().isoformat()}] 📦 Criando ambiente virtual em: {venv_dir}",
     )
-    venv_dir.mkdir(parents=True, exist_ok=True)
-
-    # Usa o python do projeto para criar o venv
-    cmd = [sys.executable, "-m", "venv", str(venv_dir)]
-    buffer.write(
-        f"[{timezone.now().isoformat()}] ▶️ Comando venv: {' '.join(cmd)}\n"
-    )
-
-    # Execução do script (agora com Popen pra podermos cancelar)
-    proc = subprocess.Popen(
-        [venv_python, script_path],
-        cwd=job_folder,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
+    _log(
+        buffer,
+        f"[{timezone.now().isoformat()}] ▶️ Comando venv: {base_python} -m venv {venv_dir}",
     )
 
-    # 👇 Salva o PID no registro da execução
-    run.external_pid = proc.pid  # type: ignore[attr-defined]
-    run.save(update_fields=["external_pid"])
-
-    # Espera o processo terminar e captura saída
-    stdout, stderr = proc.communicate()
-
-    if stdout:
-        buffer.write(f"[{timezone.now().isoformat()}] ----- STDOUT -----\n")
-        buffer.write(stdout + "\n")
-    if stderr:
-        buffer.write(f"[{timezone.now().isoformat()}] ----- STDERR -----\n")
-        buffer.write(stderr + "\n")
-
-    buffer.write(
-        f"[{timezone.now().isoformat()}] 🏁 Script terminou com código de saída: {proc.returncode}\n"
-    )
-
-    if proc.returncode != 0:
-        raise RuntimeError(
-            f"Script terminou com erro (código {proc.returncode}). Verifique STDOUT/STDERR acima."
+    try:
+        result = subprocess.run(
+            [base_python, "-m", "venv", str(venv_dir)],
+            capture_output=True,
+            text=True,
+            check=True,
         )
-
-
-    if proc.stdout:
-        buffer.write(f"[{timezone.now().isoformat()}] venv STDOUT:\n{proc.stdout}\n")
-    if proc.stderr:
-        buffer.write(f"[{timezone.now().isoformat()}] venv STDERR:\n{proc.stderr}\n")
-
-    if proc.returncode != 0:
-        raise RuntimeError(
-            f"Falha ao criar venv (código {proc.returncode}). Veja saída acima."
+        if result.stdout:
+            _log(buffer, result.stdout)
+        if result.stderr:
+            _log(buffer, result.stderr)
+    except subprocess.CalledProcessError as e:
+        _log(
+            buffer,
+            f"[{timezone.now().isoformat()}] ❌ Falha ao criar venv: {e}\n"
+            f"STDOUT:\n{e.stdout}\n\nSTDERR:\n{e.stderr}",
         )
+        # Repassa o erro pra quem chamou tratar
+        raise
 
-    # Recalcula o caminho do python (por garantia)
-    if sys.platform.startswith("win"):
-        python_path = venv_dir / "Scripts" / "python.exe"
-    else:
-        python_path = venv_dir / "bin" / "python"
-
-    if not python_path.exists():
-        raise RuntimeError(f"Python do venv não encontrado em: {python_path}")
-
-    return python_path
+    return str(venv_python)
 
 
 def install_requirements(job_folder: Path, venv_python: Path, buffer: io.StringIO) -> None:

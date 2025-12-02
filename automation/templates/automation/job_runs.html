@@ -3,37 +3,98 @@
 
 {% block title %}{{ job.name }} · Execuções · Orquestrador{% endblock %}
 
-{# CSS extra só para esta página #}
 {% block extra_css %}
 <style>
-  /* Log mais legível e sem quebrar o layout */
-  pre.log-snippet {
-      max-height: 80px;
-      overflow: auto;
-      white-space: pre-wrap;   /* quebra linha */
-      word-break: break-word;  /* quebra palavras grandes */
-      background: #0f0f0f;
-      border-radius: .5rem;
-      padding: .5rem .75rem;
+  /* Evita scroll lateral na página dessa tela */
+  html, body {
+      max-width: 100%;
+      overflow-x: hidden;
   }
 
-  /* Responsividade da tabela de execuções */
+  /* Caixa de log expandida (linha de baixo) – AGORA É DIV, NÃO PRE */
+    .log-full {
+        max-height: 300px;            /* altura máxima da caixa */
+        overflow-y: auto;             /* scroll só pra baixo */
+        overflow-x: hidden;           /* nunca scroll horizontal */
+        display: block;
+        width: 100%;
+        max-width: 100%;
+
+        /* agora podemos usar normal, pois as quebras viram <br> */
+        white-space: normal;
+        word-break: break-word;
+        overflow-wrap: anywhere;
+
+        background: #020617;
+        border-radius: .5rem;
+        padding: .75rem 1rem;
+        font-size: .85rem;
+        line-height: 1.4;
+        margin: 0;
+        color: #e5e7eb;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+                    "Liberation Mono", "Courier New", monospace;
+    }
+
+
+  .log-row {
+      background: rgba(15, 23, 42, 0.85);
+  }
+
+  .log-row td {
+      border-top: none !important;
+      border-bottom: 1px solid rgba(148, 163, 184, 0.3);
+  }
+
+  .log-row-header {
+      font-size: .8rem;
+      font-weight: 600;
+      color: #e5e7eb;
+      margin-bottom: .25rem;
+  }
+
+  .log-row-meta {
+      font-size: .75rem;
+      color: #9ca3af;
+  }
+
+  /* Wrapper da tabela de execuções: ocupa 100% e sem scroll lateral */
+  .runs-table-wrapper {
+      width: 100%;
+      max-width: 100%;
+      overflow-x: hidden;
+  }
+
+  /* Tabela não pode explodir a largura do container */
+  table.runs-table {
+      width: 100%;
+      max-width: 100%;
+      table-layout: fixed;
+  }
+
+  /* Permitir quebra de linha dentro das células da tabela */
+  table.runs-table th,
+  table.runs-table td {
+      word-wrap: break-word;
+      overflow-wrap: anywhere;
+  }
+
+  /* Responsividade da tabela de execuções no mobile */
   @media (max-width: 768px) {
-      /* Esconde cabeçalho da tabela no mobile */
       table.runs-table thead {
           display: none;
       }
 
-      table.runs-table tbody tr {
+      table.runs-table tbody tr.main-row {
           display: block;
-          margin-bottom: 1rem;
+          margin-bottom: 0.25rem;
           border: 1px solid rgba(255, 255, 255, 0.08);
           border-radius: .75rem;
           padding: .75rem .75rem .5rem;
           background: rgba(0, 0, 0, 0.35);
       }
 
-      table.runs-table tbody td {
+      table.runs-table tbody tr.main-row td {
           display: flex;
           justify-content: space-between;
           align-items: flex-start;
@@ -42,24 +103,17 @@
           padding: .15rem 0;
       }
 
-      table.runs-table tbody td::before {
+      table.runs-table tbody tr.main-row td::before {
           content: attr(data-label);
           font-weight: 600;
           margin-right: .5rem;
-          color: #adb5bd; /* cinza claro */
+          color: #adb5bd;
       }
 
-      /* Log ocupa a linha toda no mobile */
-      table.runs-table tbody td[data-label="Log (resumo)"] {
-          flex-direction: column;
-      }
-
-      table.runs-table tbody td[data-label="Log (resumo)"]::before {
-          margin-bottom: .25rem;
-      }
-
-      pre.log-snippet {
-          max-height: 120px;
+      /* Linha do log ocupando largura toda no mobile */
+      table.runs-table tbody tr.log-row td {
+          display: block;
+          padding: .5rem .75rem .75rem;
       }
   }
 </style>
@@ -77,7 +131,6 @@ Automação: <code>{{ job.code }}</code><br>
     <code>{{ job.external_main_script|default:"main.py" }}</code>
 </span>
 {% endblock %}
-
 
 {% block header_actions %}
 <a href="{% url 'automation:job_list' %}" class="btn btn-outline-light btn-sm">
@@ -103,9 +156,10 @@ Automação: <code>{{ job.code }}</code><br>
                 Agendamento: {{ job.schedule_description }}<br>
                 Total de execuções: {{ page_obj.paginator.count }}
             </p>
+
             {# ---------------- LISTA DE RUNS ---------------- #}
             {% if runs %}
-                <div class="table-responsive">
+                <div class="runs-table-wrapper">
                     <table class="table table-clean align-middle mb-0 runs-table">
                         <thead>
                             <tr>
@@ -114,12 +168,13 @@ Automação: <code>{{ job.code }}</code><br>
                                 <th>Status</th>
                                 <th>Modo</th>
                                 <th>Usuário</th>
-                                <th>Log (resumo)</th>
+                                <th>Log</th>
                             </tr>
                         </thead>
                         <tbody>
                             {% for run in runs %}
-                                <tr>
+                                {# Linha principal #}
+                                <tr class="main-row">
                                     <td data-label="Início">
                                         {{ run.started_at|date:"d/m/Y H:i:s" }}
                                     </td>
@@ -149,12 +204,47 @@ Automação: <code>{{ job.code }}</code><br>
                                             <small class="text-muted">Sistema</small>
                                         {% endif %}
                                     </td>
-
-                                    <td data-label="Log (resumo)">
-                                        <pre class="small mb-0 log-snippet">{{ run.log|default:"(sem log)"|truncatechars:500 }}</pre>
+                                    <td data-label="Log">
+                                        {% if run.log %}
+                                            <button class="btn btn-sm btn-outline-secondary"
+                                                    type="button"
+                                                    data-bs-toggle="collapse"
+                                                    data-bs-target="#logRow-{{ run.id }}"
+                                                    aria-expanded="false"
+                                                    aria-controls="logRow-{{ run.id }}">
+                                                Ver log
+                                            </button>
+                                            <small class="text-muted d-block mt-1">
+                                                {{ run.log|truncatechars:80 }}
+                                            </small>
+                                        {% else %}
+                                            <small class="text-muted">Sem log</small>
+                                        {% endif %}
                                     </td>
-
                                 </tr>
+
+                                {# Linha de log expandida (colapsável) #}
+                                {% if run.log %}
+                                    <tr id="logRow-{{ run.id }}" class="collapse log-row">
+                                        <td colspan="6">
+                                            <div class="log-row-header">
+                                                Log da execução #{{ run.id }}
+                                            </div>
+                                            <div class="log-row-meta mb-2">
+                                                Início: {{ run.started_at|date:"d/m/Y H:i:s" }}
+                                                {% if run.finished_at %}
+                                                    · Fim: {{ run.finished_at|date:"d/m/Y H:i:s" }}
+                                                {% endif %}
+                                                {% if run.triggered_by %}
+                                                    · Usuário: {{ run.triggered_by.username }}
+                                                {% endif %}
+                                            </div>
+                                            <div class="log-full">
+                                                {{ run.log|linebreaksbr }}
+                                            </div>
+                                        </td>
+                                    </tr>
+                                {% endif %}
                             {% endfor %}
                         </tbody>
                     </table>

@@ -2,230 +2,304 @@
 {% extends "base.html" %}
 
 {% block title %}
-    {% if form.instance.pk %}Editar automação{% else %}Nova automação{% endif %} · Orquestrador
+  {% if object %}
+    Editar automação · {{ object.name }}
+  {% else %}
+    Nova automação
+  {% endif %}
 {% endblock %}
 
 {% block header_title %}
-    {% if form.instance.pk %}Editar automação{% else %}Nova automação{% endif %}
+  {% if object %}
+    Editar automação
+  {% else %}
+    Nova automação
+  {% endif %}
 {% endblock %}
 
 {% block header_subtitle %}
-Cadastre uma automação baseada em <strong>pasta + venv</strong>.  
-O Orquestrador criará a pasta <code>automation_jobs/job_&lt;id&gt;/</code>, montará o
-<code>.venv</code> dentro dela e executará o arquivo Python principal informado abaixo.
+  Configure os parâmetros da automação, agendamento e execução.
 {% endblock %}
 
 {% block header_actions %}
-<a href="{% url 'automation:job_list' %}" class="btn btn-outline-light btn-sm">
-    Voltar para lista
-</a>
+  <a href="{% url 'automation:job_list' %}" class="btn btn-outline-light btn-sm">
+    Voltar para automações
+  </a>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+  .form-section-title {
+      font-size: .9rem;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      color: #9ca3af;
+      margin-bottom: .5rem;
+  }
+</style>
 {% endblock %}
 
 {% block content %}
 <div class="container-fluid">
-    <div class="card module-card">
-        <div class="card-body">
+  <div class="card module-card">
+    <div class="card-body">
+      <form method="post" novalidate>
+        {% csrf_token %}
 
-            {# Erros gerais #}
-            {% if form.non_field_errors %}
-                <div class="alert alert-danger">
-                    {% for err in form.non_field_errors %}
-                        <div>{{ err }}</div>
-                    {% endfor %}
+        {# Erros gerais do form #}
+        {% if form.non_field_errors %}
+          <div class="alert alert-danger mb-3">
+            {{ form.non_field_errors }}
+          </div>
+        {% endif %}
+
+        {# Lista resumida de erros de campos #}
+        {% if form.errors %}
+          <div class="alert alert-danger mb-3">
+            <strong>Verifique os campos com erro:</strong>
+            <ul class="mb-0">
+              {% for field in form %}
+                {% if field.errors %}
+                  <li>{{ field.label }}: {{ field.errors|striptags }}</li>
+                {% endif %}
+              {% endfor %}
+            </ul>
+          </div>
+        {% endif %}
+
+        <div class="row">
+          <div class="col-md-8">
+            <div class="form-section-title">Dados básicos</div>
+
+            <div class="mb-3">
+              <label class="form-label" for="{{ form.name.id_for_label }}">Nome</label>
+              {{ form.name }}
+              {% if form.name.errors %}
+                <div class="text-danger small">{{ form.name.errors }}</div>
+              {% endif %}
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label" for="{{ form.code.id_for_label }}">Código</label>
+              {{ form.code }}
+              {% if form.code.errors %}
+                <div class="text-danger small">{{ form.code.errors }}</div>
+              {% endif %}
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label" for="{{ form.description.id_for_label }}">Descrição</label>
+              {{ form.description }}
+              {% if form.description.errors %}
+                <div class="text-danger small">{{ form.description.errors }}</div>
+              {% endif %}
+            </div>
+
+            {# Setor #}
+            {% if form.sector %}
+              <div class="mb-3">
+                <label class="form-label" for="{{ form.sector.id_for_label }}">Setor</label>
+                {{ form.sector }}
+                {% if form.sector.help_text %}
+                  <div class="form-text">{{ form.sector.help_text }}</div>
+                {% endif %}
+                {% if form.sector.errors %}
+                  <div class="text-danger small">{{ form.sector.errors }}</div>
+                {% endif %}
+              </div>
+            {% endif %}
+          </div>
+
+          <div class="col-md-4">
+            <div class="form-section-title">Opções</div>
+
+            <div class="form-check mb-2">
+              {{ form.is_active }}
+              <label class="form-check-label" for="{{ form.is_active.id_for_label }}">
+                Automação ativa
+              </label>
+              {% if form.is_active.errors %}
+                <div class="text-danger small">{{ form.is_active.errors }}</div>
+              {% endif %}
+            </div>
+
+            <div class="form-check mb-3">
+              {{ form.allow_manual }}
+              <label class="form-check-label" for="{{ form.allow_manual.id_for_label }}">
+                Permitir disparo manual
+              </label>
+              {% if form.allow_manual.errors %}
+                <div class="text-danger small">{{ form.allow_manual.errors }}</div>
+              {% endif %}
+            </div>
+
+            {% if form.external_main_script %}
+              <div class="mb-3">
+                <label class="form-label" for="{{ form.external_main_script.id_for_label }}">
+                  Script principal
+                </label>
+                {{ form.external_main_script }}
+                <div class="form-text">
+                  Arquivo Python principal dentro da pasta da automação (ex.: <code>main.py</code>).
                 </div>
+                {% if form.external_main_script.errors %}
+                  <div class="text-danger small">{{ form.external_main_script.errors }}</div>
+                {% endif %}
+              </div>
+            {% endif %}
+          </div>
+        </div>
+
+        <hr class="my-4">
+
+        <div class="row">
+          <div class="col-md-8">
+            <div class="form-section-title">Agendamento</div>
+
+            <div class="mb-3">
+              <label class="form-label" for="{{ form.schedule_type.id_for_label }}">
+                Tipo de agendamento
+              </label>
+              {{ form.schedule_type }}
+              {% if form.schedule_type.help_text %}
+                <div class="form-text">{{ form.schedule_type.help_text }}</div>
+              {% endif %}
+              {% if form.schedule_type.errors %}
+                <div class="text-danger small">{{ form.schedule_type.errors }}</div>
+              {% endif %}
+            </div>
+
+            {# Pontual #}
+            {% if form.one_off_run_at %}
+              <div class="mb-3" id="field_one_off_run_at">
+                <label class="form-label" for="{{ form.one_off_run_at.id_for_label }}">
+                  Data/hora única (pontual)
+                </label>
+                {{ form.one_off_run_at }}
+                {% if form.one_off_run_at.help_text %}
+                  <div class="form-text">{{ form.one_off_run_at.help_text }}</div>
+                {% endif %}
+                {% if form.one_off_run_at.errors %}
+                  <div class="text-danger small">{{ form.one_off_run_at.errors }}</div>
+                {% endif %}
+              </div>
             {% endif %}
 
-            <form method="post" novalidate>
-                {% csrf_token %}
+            {# Diário – um horário #}
+            <div class="mb-3" id="field_daily_time">
+              <label class="form-label" for="{{ form.daily_time.id_for_label }}">
+                Horário diário
+              </label>
+              {{ form.daily_time }}
+              {% if form.daily_time.help_text %}
+                <div class="form-text">{{ form.daily_time.help_text }}</div>
+              {% endif %}
+              {% if form.daily_time.errors %}
+                <div class="text-danger small">{{ form.daily_time.errors }}</div>
+              {% endif %}
+            </div>
 
-                <div class="row g-4">
-                    {# COLUNA ESQUERDA – Nome + descrição #}
-                    <div class="col-md-7 border-end">
-                        <div class="mb-3">
-                            <label class="form-label fw-semibold">Nome da automação</label>
-                            {{ form.name }}
-                            <div class="form-text">
-                                Ex: <code>Robô IXC – Login Cliente</code>, <code>Importação SAP → BI</code>.
-                            </div>
-                            {% if form.name.errors %}
-                                <div class="text-danger small">
-                                    {{ form.name.errors.0 }}
-                                </div>
-                            {% endif %}
-                        </div>
-
-                        <div class="mb-0">
-                            <label class="form-label fw-semibold">Descrição (opcional)</label>
-                            {{ form.description }}
-                            <div class="form-text">
-                                Explique rapidamente o que essa automação faz
-                                (aparece apenas aqui na interface).
-                            </div>
-                            {% if form.description.errors %}
-                                <div class="text-danger small">
-                                    {{ form.description.errors.0 }}
-                                </div>
-                            {% endif %}
-                        </div>
-                    </div>
-
-                    {# COLUNA DIREITA – código, main script, flags #}
-                    <div class="col-md-5">
-                        <div class="mb-3">
-                            <label class="form-label fw-semibold">Código interno</label>
-                            {{ form.code }}
-                            <div class="form-text">
-                                Identificador curto, sem espaços. Ex:
-                                <code>robo_ixc_login_cliente</code>.
-                            </div>
-                            {% if form.code.errors %}
-                                <div class="text-danger small">
-                                    {{ form.code.errors.0 }}
-                                </div>
-                            {% endif %}
-                        </div>
-
-                        {# 🔹 NOVO BLOCO: SETOR #}
-                        <div class="col-md-4">
-                            <label class="form-label">Setor</label>
-                            {{ form.sector }}
-                            <small class="text-muted d-block">
-                                Define qual área “dona” dessa automação.
-                            </small>
-                            {% if form.sector.errors %}
-                                <div class="text-danger small">
-                                    {{ form.sector.errors.0 }}
-                                </div>
-                            {% endif %}
-                        </div>
-
-
-                        <div class="mb-3">
-                            <label class="form-label fw-semibold">Arquivo principal (Python)</label>
-                            {{ form.external_main_script }}
-                            <div class="form-text">
-                                Nome do script dentro da pasta da automação.
-                                Ex.: <code>main.py</code> ou <code>app.py</code>.
-                            </div>
-                            {% if form.external_main_script.errors %}
-                                <div class="text-danger small">
-                                    {{ form.external_main_script.errors.0 }}
-                                </div>
-                            {% endif %}
-                        </div>
-
-                        <div class="row">
-                            <div class="col-md-6">
-                                <div class="form-check mt-2">
-                                    {{ form.is_active }}
-                                    <label class="form-check-label">Ativa</label>
-                                </div>
-                                <div class="form-text">
-                                    Se desmarcado, o Orquestrador ignora esta automação.
-                                </div>
-                            </div>
-                            <div class="col-md-6">
-                                <div class="form-check mt-2">
-                                    {{ form.allow_manual }}
-                                    <label class="form-check-label">Permite disparo manual</label>
-                                </div>
-                                <div class="form-text">
-                                    Mostra o botão <strong>Executar agora</strong> na lista.
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+            {# Diário – vários horários #}
+            <div class="mb-3" id="field_multi_daily_times">
+              <label class="form-label" for="{{ form.multi_daily_times.id_for_label }}">
+                Horários diários (lista)
+              </label>
+              {{ form.multi_daily_times }}
+              {% if form.multi_daily_times.help_text %}
+                <div class="form-text">
+                  {{ form.multi_daily_times.help_text }}
                 </div>
-
-                {# BLOCO DE AGENDAMENTO (opcional) #}
-                <hr class="my-4">
-
-                <h6 class="mb-3">Agendamento (opcional)</h6>
-
-                <div class="row g-3 align-items-end">
-                    <div class="col-md-3">
-                        <label class="form-label">Tipo de agendamento</label>
-                        {{ form.schedule_type }}
-                        {% if form.schedule_type.errors %}
-                            <div class="text-danger small">
-                                {{ form.schedule_type.errors.0 }}
-                            </div>
-                        {% endif %}
-                    </div>
-
-                    <div class="col-md-4" id="field-one_off_run_at">
-                        <label class="form-label">Data/hora (pontual)</label>
-                        {{ form.one_off_run_at }}
-                        {% if form.one_off_run_at.errors %}
-                            <div class="text-danger small">
-                                {{ form.one_off_run_at.errors.0 }}
-                            </div>
-                        {% endif %}
-                    </div>
-
-                    <div class="col-md-2" id="field-daily-time">
-                        <label class="form-label">Horário diário</label>
-                        {{ form.daily_time }}
-                        {% if form.daily_time.errors %}
-                            <div class="text-danger small">
-                                {{ form.daily_time.errors.0 }}
-                            </div>
-                        {% endif %}
-                    </div>
-
-                    <div class="col-md-3">
-                        <div class="form-text">
-                            Para <strong>Pontual</strong>, preencha apenas a data/hora.  
-                            Para <strong>Diário</strong>, preencha apenas o horário.
-                        </div>
-                    </div>
+              {% else %}
+                <div class="form-text">
+                  Informe horários HH:MM separados por vírgula. Ex.: <code>08:00, 13:00, 18:00</code>
                 </div>
+              {% endif %}
+              {% if form.multi_daily_times.errors %}
+                <div class="text-danger small">{{ form.multi_daily_times.errors }}</div>
+              {% endif %}
+            </div>
 
-                <div class="mt-4 d-flex justify-content-end">
-                    <button type="submit" class="btn btn-accent px-4">
-                        Salvar automação
-                    </button>
-                </div>
-            </form>
+            {# Intervalo em minutos #}
+            <div class="mb-3" id="field_interval_minutes">
+              <label class="form-label" for="{{ form.interval_minutes.id_for_label }}">
+                Intervalo (minutos)
+              </label>
+              {{ form.interval_minutes }}
+              {% if form.interval_minutes.help_text %}
+                <div class="form-text">{{ form.interval_minutes.help_text }}</div>
+              {% endif %}
+              {% if form.interval_minutes.errors %}
+                <div class="text-danger small">{{ form.interval_minutes.errors }}</div>
+              {% endif %}
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label" for="{{ form.next_run_at.id_for_label }}">
+                Próxima execução
+              </label>
+              {{ form.next_run_at }}
+              {% if form.next_run_at.help_text %}
+                <div class="form-text">{{ form.next_run_at.help_text }}</div>
+              {% endif %}
+              {% if form.next_run_at.errors %}
+                <div class="text-danger small">{{ form.next_run_at.errors }}</div>
+              {% endif %}
+            </div>
+          </div>
         </div>
+
+        <div class="mt-4 d-flex justify-content-between">
+          <a href="{% url 'automation:job_list' %}" class="btn btn-outline-secondary">
+            Cancelar
+          </a>
+          <button type="submit" class="btn btn-accent">
+            Salvar automação
+          </button>
+        </div>
+      </form>
     </div>
+  </div>
 </div>
 {% endblock %}
 
 {% block extra_js %}
 <script>
 document.addEventListener("DOMContentLoaded", function () {
-    const scheduleTypeSelect = document.getElementById("id_schedule_type");
-    const dailyField        = document.getElementById("field-daily-time");
-    const onceField         = document.getElementById("field-one_off_run_at");
-    const inputOnce         = document.getElementById("id_one_off_run_at");
-    const inputDaily        = document.getElementById("id_daily_time");
+    const selectType     = document.getElementById("id_schedule_type");
+    const dailyField     = document.getElementById("field_daily_time");
+    const multiField     = document.getElementById("field_multi_daily_times");
+    const intervalField  = document.getElementById("field_interval_minutes");
+    const onceField      = document.getElementById("field_one_off_run_at");
 
-    function updateFields() {
-        if (!scheduleTypeSelect) return;
-        const value = scheduleTypeSelect.value;
+    function show(el, show) {
+        if (!el) return;
+        el.style.display = show ? "block" : "none";
+    }
 
-        if (value === "once") {
-            if (onceField)  onceField.style.display  = "";
-            if (dailyField) dailyField.style.display = "none";
-            if (inputOnce)  inputOnce.disabled  = false;
-            if (inputDaily) inputDaily.disabled = true;
-        } else if (value === "daily") {
-            if (onceField)  onceField.style.display  = "none";
-            if (dailyField) dailyField.style.display = "";
-            if (inputOnce)  inputOnce.disabled  = true;
-            if (inputDaily) inputDaily.disabled = false;
-        } else {
-            if (onceField)  onceField.style.display  = "";
-            if (dailyField) dailyField.style.display = "";
-            if (inputOnce)  inputOnce.disabled  = false;
-            if (inputDaily) inputDaily.disabled = false;
+    function toggleScheduleFields() {
+        if (!selectType) return;
+        const v = selectType.value;
+
+        // zera tudo
+        show(dailyField,    false);
+        show(multiField,    false);
+        show(intervalField, false);
+        show(onceField,     false);
+
+        if (v === "once") {
+            show(onceField, true);
+        } else if (v === "daily") {
+            show(dailyField, true);
+        } else if (v === "multi_daily") {
+            show(multiField, true);
+        } else if (v === "interval") {
+            show(intervalField, true);
         }
     }
 
-    if (scheduleTypeSelect) {
-        scheduleTypeSelect.addEventListener("change", updateFields);
-        updateFields();
+    toggleScheduleFields();
+    if (selectType) {
+        selectType.addEventListener("change", toggleScheduleFields);
     }
 });
 </script>

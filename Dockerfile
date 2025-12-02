@@ -8,14 +8,18 @@ ENV PYTHONUNBUFFERED=1
 # Diretório de trabalho dentro do container
 WORKDIR /app
 
-# Instalar dependências do sistema para compilar mysqlclient
+# Instalar dependências do sistema para:
+# - mysqlclient (já tinha)
+# - pyodbc (unixodbc + unixodbc-dev)
 RUN apt-get update && apt-get install -y \
     build-essential \
     default-libmysqlclient-dev \
     pkg-config \
+    unixodbc \
+    unixodbc-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Copia requirements e instala dependências Python
+# Copia requirements e instala dependências Python do projeto principal
 COPY requirements.txt /app/
 
 RUN pip install --upgrade pip && \

@@ -7,56 +7,27 @@ Aqui definimos:
 - AutomationRun: histórico de execuções (o “quando rodou” e “como foi”).
 """
 
-import datetime as dt
-
 from django.db import models
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 from django.conf import settings
 from pathlib import Path
+from django.db import models
+from django.utils import timezone
 User = get_user_model()
-
-
 # automation/models.py
 import datetime as dt
-from pathlib import Path
-
-from django.conf import settings
-from django.contrib.auth import get_user_model
-from django.db import models
-from django.utils import timezone
-
-User = get_user_model()
+from datetime import timedelta
 
 
-# automation/models.py
-import datetime as dt
-from pathlib import Path
-
-from django.conf import settings
-from django.contrib.auth import get_user_model
-from django.db import models
-from django.utils import timezone
-
-User = get_user_model()
-
-
-# automation/models.py
-import datetime as dt
-from pathlib import Path
-
-from django.conf import settings
-from django.contrib.auth import get_user_model
-from django.db import models
-from django.utils import timezone
-
-User = get_user_model()
-
+# automation/models.py (apenas a classe AutomationJob)
 
 class AutomationJob(models.Model):
     class ScheduleType(models.TextChoices):
-        ONCE = "once", "Pontual"
-        DAILY = "daily", "Diário"
+        ONCE        = "once",        "Pontual"
+        DAILY       = "daily",       "Diário"
+        MULTI_DAILY = "multi_daily", "Diário – vários horários"
+        INTERVAL    = "interval",    "A cada N minutos"
 
     # 🔹 NOVO: tipos de setor
     class Sector(models.TextChoices):
@@ -81,7 +52,7 @@ class AutomationJob(models.Model):
         help_text="Identificador curto, sem espaços. Ex: robo_ixc_login_cliente",
     )
 
-    # 🔹 NOVO: setor da automação
+    # 🔹 setor da automação
     sector = models.CharField(
        "Setor",
         max_length=50,
@@ -101,7 +72,7 @@ class AutomationJob(models.Model):
     is_active = models.BooleanField("Ativa", default=True)
     allow_manual = models.BooleanField("Permite disparo manual", default=True)
 
-    # Agendamento bem simples
+    # Agendamento
     schedule_type = models.CharField(
         "Tipo de agendamento",
         max_length=20,
@@ -116,15 +87,128 @@ class AutomationJob(models.Model):
         blank=True,
     )
 
-    # Para execução diária
+    # horário base para o diário (por exemplo todo dia às 10:30)
     daily_time = models.TimeField(
         "Horário diário",
         null=True,
         blank=True,
     )
 
+    # 👉 NOVO: vários horários diários
+    multi_daily_times = models.CharField(
+        "Horários diários (lista)",
+        max_length=200,
+        blank=True,
+        help_text="Horários HH:MM separados por vírgula. Ex.: 08:00, 13:00, 18:00",
+    )
+
+    # intervalo em minutos para o modo INTERVAL
+    interval_minutes = models.PositiveIntegerField(
+        "Intervalo (minutos)",
+        null=True,
+        blank=True,
+        help_text="Usado quando o agendamento for 'a cada N minutos'.",
+    )
+
+    # próxima execução calculada pelo scheduler
+    next_run_at = models.DateTimeField(
+        "Próxima execução",
+        null=True,
+        blank=True,
+    )
+
     created_at = models.DateTimeField("Criado em", auto_now_add=True)
     updated_at = models.DateTimeField("Atualizado em", auto_now=True)
+
+    # ----------------- MULTI-DIÁRIO: parsing dos horários -----------------
+    def get_multi_daily_times(self):
+        """
+        Converte o texto de multi_daily_times em lista de dt.time.
+        Ignora valores inválidos.
+        """
+        times = []
+        raw = (self.multi_daily_times or "").strip()
+        if not raw:
+            return []
+
+        for part in raw.split(","):
+            part = part.strip()
+            if not part:
+                continue
+            try:
+                h, m = map(int, part.split(":"))
+                times.append(dt.time(hour=h, minute=m))
+            except ValueError:
+                # horário inválido -> ignora
+                continue
+
+        # remove duplicados e ordena
+        seen = set()
+        uniq = []
+        for t in times:
+            if t not in seen:
+                seen.add(t)
+                uniq.append(t)
+        return sorted(uniq)
+
+    # ----------------- Cálculo da próxima execução -----------------
+    def compute_next_run(self, from_dt=None):
+        """Calcula a próxima execução a partir de uma data base."""
+        now = from_dt or timezone.now()
+
+        if not self.is_active:
+            return None
+
+        if self.schedule_type == self.ScheduleType.ONCE:
+            # Pontual: em geral você usa one_off_run_at e depois zera
+            return None
+
+        if self.schedule_type == self.ScheduleType.INTERVAL:
+            minutes = self.interval_minutes or 1
+            return now + timedelta(minutes=minutes)
+
+        if self.schedule_type == self.ScheduleType.DAILY:
+            # Todo dia no horário escolhido
+            if not self.daily_time:
+                # se não tiver horário, assume agora + 1 dia
+                return now + timedelta(days=1)
+
+            base = timezone.make_aware(
+                timezone.datetime.combine(now.date(), self.daily_time),
+                timezone.get_current_timezone(),
+            )
+
+            if base > now:
+                return base  # hoje ainda não passou
+
+            # já passou hoje, agenda para amanhã nesse horário
+            return base + timedelta(days=1)
+
+        if self.schedule_type == self.ScheduleType.MULTI_DAILY:
+            times = self.get_multi_daily_times()
+            if not times:
+                return None
+
+            tz = timezone.get_current_timezone()
+            today = now.date()
+
+            # tenta achar ainda hoje o próximo horário
+            for t in times:
+                candidate = timezone.make_aware(
+                    timezone.datetime.combine(today, t),
+                    tz,
+                )
+                if candidate > now:
+                    return candidate
+
+            # se todos passaram hoje, pega o primeiro horário de amanhã
+            tomorrow = today + timedelta(days=1)
+            return timezone.make_aware(
+                timezone.datetime.combine(tomorrow, times[0]),
+                tz,
+            )
+
+        return None    
 
     class Meta:
         ordering = ["name"]
@@ -149,13 +233,8 @@ class AutomationJob(models.Model):
 
         return base
 
-
     @property
     def workspace_folder_name(self) -> str:
-        """
-        Nome da pasta local que será usada como workspace da automação.
-        Só para exibição.
-        """
         return f"job_{self.pk or 'novo'}"
 
     # ---------- Descrição “bonita” do agendamento ----------
@@ -165,6 +244,18 @@ class AutomationJob(models.Model):
             if self.daily_time:
                 return f"Diária às {self.daily_time.strftime('%H:%M')}"
             return "Diária (sem horário definido)"
+
+        if self.schedule_type == self.ScheduleType.MULTI_DAILY:
+            times = self.get_multi_daily_times()
+            if not times:
+                return "Diária em vários horários (nenhum definido)"
+            lista = ", ".join(t.strftime("%H:%M") for t in times)
+            return f"Diária nos horários: {lista}"
+
+        if self.schedule_type == self.ScheduleType.INTERVAL:
+            if self.interval_minutes:
+                return f"A cada {self.interval_minutes} minuto(s)"
+            return "A cada N minutos (intervalo não definido)"
 
         if self.schedule_type == self.ScheduleType.ONCE:
             if self.one_off_run_at:
@@ -191,6 +282,17 @@ class AutomationJob(models.Model):
                 return "Horário não definido"
             return self.daily_time.strftime("%H:%M")
 
+        if self.schedule_type == self.ScheduleType.MULTI_DAILY:
+            times = self.get_multi_daily_times()
+            if not times:
+                return "Horários não definidos"
+            return ", ".join(t.strftime("%H:%M") for t in times)
+
+        if self.schedule_type == self.ScheduleType.INTERVAL:
+            if self.interval_minutes:
+                return f"A cada {self.interval_minutes} min"
+            return "Intervalo não definido"
+
         return "-"
     
     @property
@@ -206,9 +308,10 @@ class AutomationJob(models.Model):
         from .models import AutomationRun  # evita import circular
         return self.runs.filter(status=AutomationRun.Status.RUNNING).exists()    
 
-    # Hoje o scheduler ainda não está usando isso – deixo falso para não confundir.
     def is_due(self, now: dt.datetime) -> bool:
+        # Ainda não usamos esse método no scheduler atual
         return False
+
 
 
 

@@ -1,11 +1,33 @@
+# Git
+.git
+.gitignore
+
+# Ambientes virtuais (raiz)
+venv/
+.venv/
+**/venv/
+**/.venv/
+
+# Ambientes virtuais dentro das automações
+automation_jobs/*/.venv/
+automation_jobs/*/.venv/**
+
+# Cache Python
 __pycache__/
+**/__pycache__/
 *.pyc
 *.pyo
 *.pyd
-.env
-.venv/
-venv/
-.git/
-.gitignore
-.idea/
-.vscode/
+
+# Arquivos de banco locais
+*.sqlite3
+*.db
+
+# Arquivos temporários
+*.log
+*.tmp
+
+# OneDrive "lixos"
+~$*
+Thumbs.db
+Desktop.ini
