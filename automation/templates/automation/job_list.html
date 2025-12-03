@@ -29,7 +29,9 @@ Gerencie scripts externos organizados em pastas com ambiente virtual dedicado (p
                         <thead>
                             <tr>
                                 <th>Automação</th>
+                                <th>Setor</th>
                                 <th>Script principal (pasta + venv)</th>
+                                <th>Agendamento</th>  {# 👈 NOVA COLUNA #}
                                 <th>Última execução</th>
                                 <th>Execuções</th>
                                 <th>Status</th>
@@ -47,10 +49,14 @@ Gerencie scripts externos organizados em pastas com ambiente virtual dedicado (p
                                         </a><br>
                                         <small class="text-muted">
                                             Código: {{ job.code }}
-                                            {% if job.description %}
-                                                · {{ job.description }}
-                                            {% endif %}
                                         </small>
+                                    </td>
+
+                                   <!-- NOVA COLUNA SETOR -->
+                                    <td>
+                                        <span class="badge bg-secondary-subtle text-body-secondary">
+                                            {{ job.get_sector_display }}
+                                        </span>
                                     </td>
 
                                     <td>
@@ -60,9 +66,50 @@ Gerencie scripts externos organizados em pastas com ambiente virtual dedicado (p
                                         </small>
                                     </td>
 
+                                    {# 🔹 COLUNA DE AGENDAMENTO #}
+                                    <td>
+                                        {% if job.schedule_type == "daily" %}
+                                            <span class="badge bg-primary">Diário</span><br>
+                                            <small class="text-muted">
+                                                {% if job.daily_time %}
+                                                    às {{ job.daily_time|time:"H:i" }}
+                                                {% else %}
+                                                    Horário não definido
+                                                {% endif %}
+                                            </small>
+                                        {% elif job.schedule_type == "interval" %}
+                                            <span class="badge bg-primary">Intervalo</span><br>
+                                            <small class="text-muted">
+                                                {% if job.interval_minutes %}
+                                                    A cada {{ job.interval_minutes }} min
+                                                {% else %}
+                                                    Intervalo não definido
+                                                {% endif %}
+                                            </small>
+                                        {% elif job.schedule_type == "once" %}
+                                            <span class="badge bg-primary">Pontual</span><br>
+                                            <small class="text-muted">
+                                                {% if job.one_off_run_at %}
+                                                    {{ job.one_off_run_at|date:"d/m/Y H:i" }}
+                                                {% else %}
+                                                    Sem data definida
+                                                {% endif %}
+                                            </small>
+                                        {% else %}
+                                            <small class="text-muted">—</small>
+                                        {% endif %}
+
+                                        {% if job.next_run_at %}
+                                            <br>
+                                            <small class="text-muted">
+                                                Próx: {{ job.next_run_at|date:"d/m/Y H:i" }}
+                                            </small>
+                                        {% endif %}
+                                    </td>
+
                                     <td>
                                         {% if job.last_run_at %}
-                                            <small>
+                                            <small class="text-muted">
                                                 {{ job.last_run_at|date:"d/m/Y H:i" }}
                                             </small>
                                         {% else %}
@@ -71,76 +118,83 @@ Gerencie scripts externos organizados em pastas com ambiente virtual dedicado (p
                                     </td>
 
                                     <td>
-                                        <small>
+                                        <small class="text-muted">
                                             Total: {{ job.runs_total|default:"0" }}
                                         </small>
                                     </td>
 
-                                <td>
-                                    {% if job.has_running %}
-                                        <span class="badge bg-warning text-dark me-1">Em execução</span>
-                                    {% endif %}
+                                    <td>
+                                        {% if job.has_running %}
+                                            <span class="badge bg-warning text-dark me-1">Em execução</span>
+                                        {% endif %}
 
-                                    {% if job.is_active %}
-                                        <span class="badge bg-success">Ativa</span>
-                                    {% else %}
-                                        <span class="badge bg-secondary">Inativa</span>
-                                    {% endif %}
+                                        {% if job.is_active %}
+                                            <span class="badge bg-success">Ativa</span>
+                                        {% else %}
+                                            <span class="badge bg-secondary">Inativa</span>
+                                        {% endif %}
 
-                                    {% if job.allow_manual %}
-                                        <span class="badge bg-info text-dark">Permite manual</span>
-                                    {% endif %}
-                                </td>
+                                        {% if job.allow_manual %}
+                                            <span class="badge bg-info text-dark">Permite manual</span>
+                                        {% endif %}
+                                    </td>
 
-                                <td class="text-end">
+                                    <td class="text-end">
                                     <div class="btn-group btn-group-sm" role="group">
+
+                                        {# Arquivos #}
                                         <a href="{% url 'automation:job_files' job.pk %}"
-                                        class="btn btn-outline-secondary">
-                                            Arquivos
+                                        class="btn btn-outline-secondary action-btn-square"
+                                        title="Arquivos">
+                                        <i class="bi bi-folder2-open action-icon"></i>
                                         </a>
 
+                                        {# Editar #}
                                         <a href="{% url 'automation:job_update' job.pk %}"
-                                        class="btn btn-outline-secondary">
-                                            Editar
+                                        class="btn btn-outline-secondary action-btn-square"
+                                        title="Editar automação">
+                                        <i class="bi bi-pencil-square action-icon"></i>
                                         </a>
 
                                         {% if job.allow_manual %}
-                                            {% if job.has_running %}
-                                                {# Quando estiver rodando, mostra botão de PARAR #}
-                                                <form method="post"
-                                                    action="{% url 'automation:job_stop' job.pk %}"
+                                        {% if job.has_running %}
+                                            {# Parar execução #}
+                                            <form method="post"
+                                                action="{% url 'automation:job_stop' job.pk %}"
+                                                class="d-inline">
+                                            {% csrf_token %}
+                                            <button type="submit"
+                                                    class="btn btn-outline-danger action-btn-square"
+                                                    title="Parar execução em andamento">
+                                                <i class="bi bi-stop-fill action-icon"></i>
+                                            </button>
+                                            </form>
+                                        {% else %}
+                                            {% if job.is_active %}
+                                            {# Executar agora #}
+                                            <form method="post"
+                                                    action="{% url 'automation:job_run_now' job.pk %}"
                                                     class="d-inline">
-                                                    {% csrf_token %}
-                                                    <button type="submit"
-                                                            class="btn btn-outline-danger">
-                                                        Parar execução
-                                                    </button>
-                                                </form>
+                                                {% csrf_token %}
+                                                <button type="submit"
+                                                        class="btn btn-outline-success action-btn-square"
+                                                        title="Executar agora">
+                                                <i class="bi bi-play-fill action-icon"></i>
+                                                </button>
+                                            </form>
                                             {% else %}
-                                                {# Não está rodando: olha se está ativa #}
-                                                {% if job.is_active %}
-                                                    <form method="post"
-                                                        action="{% url 'automation:job_run_now' job.pk %}"
-                                                        class="d-inline">
-                                                        {% csrf_token %}
-                                                        <button type="submit"
-                                                                class="btn btn-outline-primary">
-                                                            Executar agora
-                                                        </button>
-                                                    </form>
-                                                {% else %}
-                                                    <button class="btn btn-outline-secondary"
-                                                            disabled
-                                                            title="Automação inativa. Ative para executar.">
-                                                        Executar (inativa)
-                                                    </button>
-                                                {% endif %}
+                                            {# Inativa – mesmo tamanho, só “apagado” #}
+                                            <button class="btn btn-outline-secondary action-btn-square"
+                                                    style="pointer-events: none; opacity: .4;"
+                                                    title="Automação inativa. Ative para executar.">
+                                                <i class="bi bi-play-fill action-icon"></i>
+                                            </button>
                                             {% endif %}
                                         {% endif %}
-
+                                        {% endif %}
 
                                     </div>
-                                </td>
+                                    </td>
 
 
                                 </tr>
@@ -157,4 +211,22 @@ Gerencie scripts externos organizados em pastas com ambiente virtual dedicado (p
         </div>
     </div>
 </div>
+
+<style>
+    .action-btn-square {
+    width: 52px;          /* largura maior */
+    height: 44px;         /* altura maior */
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 10px;  /* deixa mais “botão” mesmo */
+    }
+
+    .action-icon {
+    font-size: 1.5rem;    /* ícone bem mais visível */
+    }
+
+</style>
+
 {% endblock %}

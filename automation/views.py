@@ -20,7 +20,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse_lazy
 from django.views.decorators.http import require_POST
 from django.contrib.auth.decorators import login_required
-from django.db.models import Count, Q
+from django.db.models import Count, Q, Max
 import os
 import signal 
 from .forms import AutomationJobForm, JobFileUploadForm
@@ -39,15 +39,19 @@ class AutomationJobListView(LoginRequiredMixin, ListView):
     """
     Lista todas as automações cadastradas.
     """
-
     model = AutomationJob
-    template_name = "automation/job_list.html"  # 👈 ESSENCIAL
+    template_name = "automation/job_list.html"
     context_object_name = "jobs"
 
     def get_queryset(self):
         return (
             AutomationJob.objects
-            .annotate(runs_total=Count("runs"))
+            .annotate(
+                runs_total=Count("runs"),
+                last_run_at=Max("runs__started_at"),   # para colocar o horario de inicio na lista de automações na coluna execusão
+                #last_run_at = Max("runs__finished_at") para colocar o horario do termino na lista de automações na coluna execusão
+
+            )
             .order_by("name")
         )
 
@@ -181,6 +185,14 @@ class JobFilesView(LoginRequiredMixin, View):
         if safe_subdir:
             display_path += safe_subdir + "/"
 
+        # 🔹 NOVO: raiz "permitida" para download
+        ALLOWED_DOWNLOAD_ROOTS = ("entrada", "saida")        
+
+        # qual a primeira pasta (top-level) desse subdir?
+        first_segment = None
+        if safe_subdir:
+            first_segment = safe_subdir.split("/", 1)[0]
+
         files = []
         if current_dir.exists():
             for entry in sorted(current_dir.iterdir()):
@@ -198,6 +210,14 @@ class JobFilesView(LoginRequiredMixin, View):
                         f"{safe_subdir}/{entry.name}" if safe_subdir else entry.name
                     )
 
+        
+                # 🔹 só deixa download se:
+                # - NÃO for diretório
+                # - estivermos dentro de 'entrada' ou 'saida'
+                can_download = False
+                if (not is_dir) and first_segment in ALLOWED_DOWNLOAD_ROOTS:
+                    can_download = True
+
                 files.append(
                     {
                         "name": entry.name,
@@ -208,6 +228,7 @@ class JobFilesView(LoginRequiredMixin, View):
                             tz=timezone.get_current_timezone(),
                         ),
                         "subdir_param": subdir_for_child,
+                        "can_download": can_download,   # 👈 NOVO
                     }
                 )
 
@@ -224,6 +245,7 @@ class JobFilesView(LoginRequiredMixin, View):
             "files": files,
             "form": form,
             "current_path_display": display_path,
+            "current_subdir": subdir,   # 👈 para montar link de download
         }
         return render(request, self.template_name, context)
 
@@ -261,10 +283,70 @@ class JobFilesView(LoginRequiredMixin, View):
             "files": files,
             "form": form,
             "current_path_display": display_path,
+            "current_subdir": subdir,   # 👈 idem
         }
         return render(request, self.template_name, context)
 
 
+from django.http import FileResponse, Http404
+...
+
+class JobFileDownloadView(LoginRequiredMixin, View):
+    """
+    Faz download de um arquivo de 'entrada' ou 'saida' de uma automação.
+    Não permite baixar arquivos de outras pastas (scripts, etc).
+    """
+
+    ALLOWED_DOWNLOAD_ROOTS = ("entrada", "saida")
+
+    def get(self, request, pk):
+        job = get_object_or_404(AutomationJob, pk=pk)
+        base_dir = job.get_job_dir()
+
+        subdir = (request.GET.get("subdir") or "").strip().strip("\\/")
+        filename = request.GET.get("name")
+
+        if not filename:
+            raise Http404("Arquivo não especificado.")
+
+        # garante nome "seguro" (sem path traversal via nome)
+        filename_safe = Path(filename).name
+
+        # monta diretório alvo a partir do subdir, com proteção
+        current_dir = base_dir
+        if subdir:
+            candidate_dir = base_dir / subdir
+            try:
+                candidate_dir.relative_to(base_dir)
+            except ValueError:
+                # tentativa de escapar da pasta base
+                raise Http404("Caminho inválido.")
+
+            current_dir = candidate_dir
+
+        file_path = current_dir / filename_safe
+
+        # valida se o arquivo existe
+        if not file_path.exists() or not file_path.is_file():
+            raise Http404("Arquivo não encontrado.")
+
+        # 🔒 GARANTIA: arquivo precisa estar dentro de 'entrada' ou 'saida'
+        try:
+            rel_path = file_path.relative_to(base_dir)
+        except ValueError:
+            raise Http404("Arquivo fora da pasta do job.")
+
+        first_segment = rel_path.parts[0] if rel_path.parts else None
+        if first_segment not in self.ALLOWED_DOWNLOAD_ROOTS:
+            # Nada fora de entrada/saida pode ser baixado
+            raise Http404("Download não permitido para este arquivo.")
+
+        # Tudo ok, devolve como FileResponse
+        return FileResponse(
+            open(file_path, "rb"),
+            as_attachment=True,
+            filename=filename_safe,
+        )
 
 
 

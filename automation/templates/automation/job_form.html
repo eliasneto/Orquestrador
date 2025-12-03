@@ -80,14 +80,6 @@
             </div>
 
             <div class="mb-3">
-              <label class="form-label" for="{{ form.code.id_for_label }}">Código</label>
-              {{ form.code }}
-              {% if form.code.errors %}
-                <div class="text-danger small">{{ form.code.errors }}</div>
-              {% endif %}
-            </div>
-
-            <div class="mb-3">
               <label class="form-label" for="{{ form.description.id_for_label }}">Descrição</label>
               {{ form.description }}
               {% if form.description.errors %}

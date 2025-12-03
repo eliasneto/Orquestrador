@@ -18,11 +18,13 @@ User = get_user_model()
 # automation/models.py
 import datetime as dt
 from datetime import timedelta
+from django.utils.text import slugify
 
 
 # automation/models.py (apenas a classe AutomationJob)
 
 class AutomationJob(models.Model):
+
     class ScheduleType(models.TextChoices):
         ONCE        = "once",        "Pontual"
         DAILY       = "daily",       "Diário"
@@ -49,6 +51,7 @@ class AutomationJob(models.Model):
         "Código interno",
         max_length=100,
         unique=True,
+        blank=True,  # 👈 permite vir vazio do form
         help_text="Identificador curto, sem espaços. Ex: robo_ixc_login_cliente",
     )
 
@@ -313,7 +316,40 @@ class AutomationJob(models.Model):
         return False
 
 
+    def _generate_code(self):
+            """
+            Gera um código único baseado no nome + data/hora.
+            Ex.: 'blueez_medicao_0312250920'
+            """
+            base = slugify(self.name or "automacao")  # ex.: 'blueez-medicao'
+            base = base.replace("-", "_")             # vira 'blueez_medicao'
 
+            from django.utils import timezone
+            timestamp = timezone.now().strftime("%d%m%y%H%M")  # 0312250920
+
+            candidate = f"{base}_{timestamp}" if base else timestamp
+
+            # garante que não passe de 100 chars
+            max_len = self._meta.get_field("code").max_length
+            if len(candidate) > max_len:
+                candidate = candidate[:max_len]
+
+            # se, por algum motivo, já existir, acrescenta sufixo _2, _3...
+            original = candidate
+            counter = 2
+            Model = self.__class__
+            while Model.objects.filter(code=candidate).exists():
+                suffix = f"_{counter}"
+                candidate = f"{original[: max_len - len(suffix)]}{suffix}"
+                counter += 1
+
+            return candidate
+
+    def save(self, *args, **kwargs):
+        # só gera código automaticamente na criação ou se estiver vazio
+        if not self.code:
+            self.code = self._generate_code()
+        super().save(*args, **kwargs)
 
 
 class AutomationRun(models.Model):

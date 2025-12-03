@@ -13,7 +13,6 @@ class AutomationJobForm(forms.ModelForm):
         fields = [
             "name",
             "description",
-            "code",
             "sector",
             "external_main_script",
             "is_active",
@@ -38,9 +37,6 @@ class AutomationJobForm(forms.ModelForm):
             ),
             "sector": forms.Select(
                 attrs={"class": "form-select"},
-            ),
-            "code": forms.TextInput(
-                attrs={"class": "form-control", "placeholder": "robo_ixc_login_cliente"}
             ),
             "external_main_script": forms.TextInput(
                 attrs={"class": "form-control", "placeholder": "main.py"}
@@ -71,6 +67,8 @@ class AutomationJobForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         f = self.fields
+        # Código é gerado automaticamente
+        #self.fields["code"].required = False
 
         if "schedule_type" in f:
             f["schedule_type"].label = "Tipo de agendamento"

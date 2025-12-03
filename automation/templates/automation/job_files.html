@@ -14,7 +14,6 @@
     <code>{{ job.external_main_script }}</code>
 {% endblock %}
 
-
 {% block header_actions %}
 <a href="{% url 'automation:job_list' %}" class="btn btn-outline-light btn-sm">
     Voltar para automações
@@ -36,29 +35,29 @@
                         <code>{{ current_path_display }}</code>.
                     </p>
 
-                        <form method="post" enctype="multipart/form-data" class="mt-3">
-                            {% csrf_token %}
+                    <form method="post" enctype="multipart/form-data" class="mt-3">
+                        {% csrf_token %}
 
-                            <div class="mb-3">
-                                <label class="form-label" for="id_files">
-                                    Selecione um ou mais arquivos
-                                </label>
-                                {{ form.files }}
-                                {% if form.files.errors %}
-                                    <div class="text-danger small">
-                                        {{ form.files.errors.0 }}
-                                    </div>
-                                {% endif %}
-                                <small class="text-muted d-block">
-                                    Os arquivos selecionados serão salvos diretamente em
-                                    <code>{{ current_path_display }}</code>.
-                                </small>
-                            </div>
+                        <div class="mb-3">
+                            <label class="form-label" for="id_files">
+                                Selecione um ou mais arquivos
+                            </label>
+                            {{ form.files }}
+                            {% if form.files.errors %}
+                                <div class="text-danger small">
+                                    {{ form.files.errors.0 }}
+                                </div>
+                            {% endif %}
+                            <small class="text-muted d-block">
+                                Os arquivos selecionados serão salvos diretamente em
+                                <code>{{ current_path_display }}</code>.
+                            </small>
+                        </div>
 
-                            <button type="submit" class="btn btn-warning btn-lg w-100">
-                                Enviar arquivos
-                            </button>
-                        </form>
+                        <button type="submit" class="btn btn-warning btn-lg w-100">
+                            Enviar arquivos
+                        </button>
+                    </form>
 
                 </div>
             </div>
@@ -77,16 +76,16 @@
                                         <th>Nome</th>
                                         <th class="text-end">Tamanho</th>
                                         <th>Modificado em</th>
+                                        <th class="text-end">Ações</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                 {% for f in files %}
                                     <tr>
                                         <td>
-                                        <td>
                                             {% if f.is_dir and f.subdir_param %}
-                                                <a href="{% url 'automation:job_files' job.pk %}?subdir={{ f.subdir_param }}"
-                                                class="text-decoration-none">
+                                                <a href="{% url 'automation:job_files' job.pk %}?subdir={{ f.subdir_param|urlencode }}"
+                                                   class="text-decoration-none">
                                                     <i class="bi bi-folder-fill me-1"></i>{{ f.name }}/
                                                 </a>
                                             {% elif f.is_dir %}
@@ -103,8 +102,22 @@
                                                 —
                                             {% endif %}
                                         </td>
+
                                         <td>
                                             {{ f.modified|date:"d/m/Y H:i" }}
+                                        </td>
+
+                                        <td class="text-end">
+                                            {% if not f.is_dir and f.can_download %}
+                                                <a
+                                                  class="btn btn-sm btn-outline-primary"
+                                                  href="{% url 'automation:job_file_download' job.pk %}?subdir={{ current_subdir|urlencode }}&name={{ f.name|urlencode }}"
+                                                >
+                                                    <i class="bi bi-download"></i> Baixar
+                                                </a>
+                                            {% else %}
+                                                <span class="text-muted small">—</span>
+                                            {% endif %}
                                         </td>
                                     </tr>
                                 {% endfor %}

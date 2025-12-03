@@ -1,9 +1,9 @@
 {
-    "https://perfuratrizesdobrasil.com.br/": "Offline / Erro de Conex\u00e3o",
-    "https://www.howbe.com.br/": "OK 200",
-    "https://www.bayinvest.com.br/": "Certificado SSL Inv\u00e1lido",
+    "https://perfuratrizesdobrasil.com.br/": "OK 200",
+    "https://www.howbe.com.br/": "Erro HTTP 502",
+    "https://www.bayinvest.com.br/": "OK 200",
     "https://www.lktec.com.br/": "OK 200",
-    "https://www.studpb.com.br/": "Offline / Erro de Conex\u00e3o",
+    "https://www.studpb.com.br/": "OK 200",
     "https://www.2money.com.br/": "OK 200",
     "https://acessoseguro.sme.fortaleza.ce.gov.br/#/": "Offline / Erro de Conex\u00e3o",
     "https://sefin.caucaia.ce.gov.br/": "OK 200",

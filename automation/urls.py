@@ -6,6 +6,7 @@ from .views import (
     AutomationJobUpdateView,
     AutomationRunListView,
     AutomationJobRunListView,  # 👈 NOVO
+    JobFileDownloadView,   # 👈 novo
     JobFilesView,  
     run_job_now,
     stop_job,
@@ -15,6 +16,7 @@ app_name = "automation"
 
 urlpatterns = [
     path("", AutomationJobListView.as_view(), name="job_list"),
+    path("jobs/<int:pk>/files/download/", JobFileDownloadView.as_view(), name="job_file_download"), #Download de arquivos
     path("jobs/new/", AutomationJobCreateView.as_view(), name="job_create"),
     path("jobs/<int:pk>/edit/", AutomationJobUpdateView.as_view(), name="job_update"),
     path("jobs/<int:pk>/run/", run_job_now, name="job_run_now"),
