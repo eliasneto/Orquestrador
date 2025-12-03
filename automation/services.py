@@ -29,10 +29,12 @@ import threading
 import traceback
 from pathlib import Path
 from typing import Optional
+
 from django.conf import settings
 from django.utils import timezone
-from .models import AutomationJob, AutomationRun
-#from .runner import disparar_job_externo  # sua função que dispara a automação
+
+from .models import AutomationJob, AutomationRun, AutomationEvent
+
 
 # ==========================
 #  Caminhos básicos
@@ -42,23 +44,54 @@ from .models import AutomationJob, AutomationRun
 AUTOMATION_ROOT = Path(settings.BASE_DIR) / "automation_jobs"
 AUTOMATION_ROOT.mkdir(parents=True, exist_ok=True)
 
-# automation/services.py
+
+# ==========================
+#  Scheduler (jobs pendentes)
+# ==========================
 
 def run_pending_jobs():
     """
     Dispara automaticamente os jobs agendados cujo next_run_at já passou.
     Deve ser chamada periodicamente (ex.: a cada 1 minuto).
+
+    Agora também registra eventos quando:
+    - o job está pausado e a execução é pulada.
     """
     now = timezone.now()
 
-    # Busca jobs ativos que têm próxima execução definida e já vencida
-    jobs = (
-        AutomationJob.objects.filter(is_active=True)
+    # Jobs ativos, NÃO pausados, com próxima execução vencida
+    jobs_to_run = (
+        AutomationJob.objects.filter(is_active=True, is_paused=False)
         .exclude(next_run_at__isnull=True)
         .filter(next_run_at__lte=now)
     )
 
-    for job in jobs:
+    # Jobs ativos, MAS pausados, com próxima execução vencida
+    # -> não executa, apenas registra que foi ignorado
+    paused_jobs = (
+        AutomationJob.objects.filter(is_active=True, is_paused=True)
+        .exclude(next_run_at__isnull=True)
+        .filter(next_run_at__lte=now)
+    )
+
+    # 🔸 Loga execuções que foram *puladas* por causa da pausa
+    for job in paused_jobs:
+        # registra evento
+        log_automation_event(
+            job,
+            AutomationEvent.EventType.SCHEDULE_SKIPPED_PAUSED,
+            message=(
+                f"Execução programada para {job.next_run_at} "
+                f"ignorada porque a automação está pausada."
+            ),
+        )
+        # anda o ponteiro de next_run_at para o próximo horário,
+        # como se tivesse "consumido" esse agendamento
+        job.next_run_at = job.compute_next_run(from_dt=now)
+        job.save(update_fields=["next_run_at"])
+
+    # 🔹 Dispara os jobs realmente agendados
+    for job in jobs_to_run:
         # Evita concorrência: se já tem uma execução rodando, pula esse job
         if AutomationRun.objects.filter(
             job=job,
@@ -102,6 +135,7 @@ def get_job_folder(job: AutomationJob) -> Path:
         )
 
     return job_folder
+
 
 def _log(buffer, msg: str):
     """
@@ -302,11 +336,6 @@ def execute_external_folder_job(
 # ==========================
 
 
-# ==========================
-#  Execução de Jobs
-# ==========================
-
-
 def execute_job(
     job: AutomationJob,
     triggered_by=None,
@@ -339,6 +368,26 @@ def execute_job(
         triggered_mode=triggered_mode,
         started_at=timezone.now(),  # evita NOT NULL
     )
+
+    # 🔹 LOG: início de execução (manual x agendada)
+    try:
+        if triggered_mode == AutomationRun.TriggerMode.MANUAL:
+            event_type = AutomationEvent.EventType.MANUAL_START
+            msg = "Execução manual iniciada."
+        else:
+            event_type = AutomationEvent.EventType.SCHEDULE_TRIGGERED
+            msg = "Execução agendada iniciada pelo scheduler."
+
+        log_automation_event(
+            job,
+            event_type,
+            run=run,
+            user=triggered_by,
+            message=msg,
+        )
+    except Exception:
+        # Se der qualquer erro ao gravar o log, não derruba a automação
+        pass
 
     buffer = io.StringIO()
     ts = timezone.now().isoformat()
@@ -389,3 +438,30 @@ def execute_job_async(
 
     t = threading.Thread(target=_target, daemon=True)
     t.start()
+
+
+# ==========================
+#  Helper de log de eventos
+# ==========================
+
+def log_automation_event(
+    job,
+    event_type,
+    *,
+    run=None,
+    message="",
+    meta=None,
+    user=None,
+):
+    """
+    Registra um evento de alto nível do orquestrador
+    (ex.: execução manual, disparo agendado, job pausado, etc).
+    """
+    return AutomationEvent.objects.create(
+        job=job,
+        run=run,
+        event_type=event_type,
+        message=message or "",
+        meta=meta or {},
+        triggered_by=user,
+    )

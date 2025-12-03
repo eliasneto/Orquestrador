@@ -75,6 +75,13 @@ class AutomationJob(models.Model):
     is_active = models.BooleanField("Ativa", default=True)
     allow_manual = models.BooleanField("Permite disparo manual", default=True)
 
+    # 🔹 NOVO: pausa apenas o agendamento automático
+    is_paused = models.BooleanField(
+        "Agendamento pausado",
+        default=False,
+        help_text="Se verdadeiro, o scheduler não dispara esta automação automaticamente.",
+    )
+    ...
     # Agendamento
     schedule_type = models.CharField(
         "Tipo de agendamento",
@@ -428,3 +435,54 @@ class AutomationRun(models.Model):
 
     def __str__(self) -> str:
         return f"{self.job.name} @ {self.started_at:%d/%m/%Y %H:%M}"
+
+
+from django.db import models
+from django.conf import settings
+from django.utils import timezone
+
+class AutomationEvent(models.Model):
+    class EventType(models.TextChoices):
+        SCHEDULE_TRIGGERED      = "schedule_triggered", "Agendamento disparado"
+        SCHEDULE_SKIPPED_PAUSED = "schedule_skipped_paused", "Agendamento ignorado (pausado)"
+        SCHEDULE_SKIPPED_INACTIVE = "schedule_skipped_inactive", "Agendamento ignorado (inativo)"
+        MANUAL_START            = "manual_start", "Execução manual iniciada"
+        MANUAL_STOP             = "manual_stop", "Execução manual interrompida"
+        NEXT_RUN_UPDATED        = "next_run_updated", "Próxima execução atualizada"
+        SCHEDULER_ERROR         = "scheduler_error", "Erro no scheduler"
+
+    job = models.ForeignKey(
+        "automation.AutomationJob",
+        on_delete=models.CASCADE,
+        related_name="events",
+    )
+    run = models.ForeignKey(
+        "automation.AutomationRun",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="events",
+        help_text="Execução relacionada (se houver).",
+    )
+    event_type = models.CharField(
+        max_length=50,
+        choices=EventType.choices,
+    )
+    message = models.TextField(blank=True)
+    meta = models.JSONField(blank=True, null=True)  # detalhes extras (dict livre)
+
+    created_at = models.DateTimeField(default=timezone.now)
+
+    triggered_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        help_text="Usuário que causou o evento (se aplicável).",
+    )
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"[{self.created_at:%d/%m %H:%M}] {self.event_type} – {self.job.code}"

@@ -12,10 +12,14 @@ Gerencie scripts externos organizados em pastas com ambiente virtual dedicado (p
 <a href="{% url 'automation:job_create' %}" class="btn btn-accent btn-sm">
     + Nova automação
 </a>
-<a href="{% url 'automation:run_list' %}" class="btn btn-outline-light btn-sm">
-    Histórico geral de execuções
+<a href="{% url 'automation:run_list' %}" class="btn btn-accent btn-sm">
+    Histórico de execuções
+</a>
+<a href="{% url 'automation:event_list' %}" class="btn btn-accent btn-sm">
+    Logs da automação
 </a>
 {% endblock %}
+
 
 {% block content %}
 <div class="container-fluid">
@@ -129,9 +133,13 @@ Gerencie scripts externos organizados em pastas com ambiente virtual dedicado (p
                                         {% endif %}
 
                                         {% if job.is_active %}
-                                            <span class="badge bg-success">Ativa</span>
+                                            <span class="badge bg-success me-1">Ativa</span>
                                         {% else %}
-                                            <span class="badge bg-secondary">Inativa</span>
+                                            <span class="badge bg-secondary me-1">Inativa</span>
+                                        {% endif %}
+
+                                        {% if job.is_paused %}
+                                            <span class="badge bg-dark me-1">Pausada</span>
                                         {% endif %}
 
                                         {% if job.allow_manual %}
@@ -155,6 +163,33 @@ Gerencie scripts externos organizados em pastas com ambiente virtual dedicado (p
                                         title="Editar automação">
                                         <i class="bi bi-pencil-square action-icon"></i>
                                         </a>
+
+                                            {# 🔹 PAUSAR / RETOMAR AGENDAMENTO #}
+                                        {% if job.is_active %}
+                                            {% if job.is_paused %}
+                                                <form method="post"
+                                                    action="{% url 'automation:job_resume' job.pk %}"
+                                                    class="d-inline">
+                                                    {% csrf_token %}
+                                                    <button type="submit"
+                                                            class="btn btn-outline-warning action-btn-square"
+                                                            title="Retomar agendamento automático">
+                                                        <i class="bi bi-play-circle-fill action-icon"></i>
+                                                    </button>
+                                                </form>
+                                            {% else %}
+                                                <form method="post"
+                                                    action="{% url 'automation:job_pause' job.pk %}"
+                                                    class="d-inline">
+                                                    {% csrf_token %}
+                                                    <button type="submit"
+                                                            class="btn btn-outline-warning action-btn-square"
+                                                            title="Pausar só as execuções automáticas; manual continua liberado">
+                                                        <i class="bi bi-pause-circle-fill action-icon"></i>
+                                                    </button>
+                                                </form>
+                                            {% endif %}
+                                        {% endif %}
 
                                         {% if job.allow_manual %}
                                         {% if job.has_running %}

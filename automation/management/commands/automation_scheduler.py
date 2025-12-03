@@ -1,3 +1,4 @@
+# automation/management/commands/automation_scheduler.py
 """
 Comando simples de scheduler para executar automações agendadas.
 
@@ -10,9 +11,7 @@ têm next_run_at vencido e disparando-os.
 """
 
 import time
-
 from django.core.management.base import BaseCommand
-
 from automation.services import run_pending_jobs  # ⬅️ NOVO
 
 

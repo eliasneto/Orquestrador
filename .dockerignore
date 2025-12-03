@@ -9,7 +9,10 @@ venv/
 **/.venv/
 
 # Ambientes virtuais dentro das automações
-automation_jobs
+automation_jobs/*
+
+# Mas manter a pasta
+!automation_jobs/
 
 # Cache Python
 __pycache__/

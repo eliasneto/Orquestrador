@@ -10,8 +10,10 @@ Inclui:
 - Tela de arquivos da automação (pasta + venv)
 """
 
-# automation/views.py
 from pathlib import Path
+import os
+import signal
+
 from django.utils import timezone
 from django.contrib import messages
 from django.views.generic import ListView, CreateView, UpdateView, View
@@ -20,20 +22,58 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse_lazy
 from django.views.decorators.http import require_POST
 from django.contrib.auth.decorators import login_required
-from django.db.models import Count, Q, Max
-import os
-import signal 
+from django.db.models import Count, Max
+from django.http import FileResponse, Http404
 from .forms import AutomationJobForm, JobFileUploadForm
-from .models import AutomationJob, AutomationRun
-from .services import execute_job_async
-
+from .models import AutomationJob, AutomationRun, AutomationEvent
+from .services import execute_job_async, log_automation_event
 
 
 # =========================
 #  Listagem e cadastro
 # =========================
 
-# automation/views.py
+class AutomationJobPauseView(LoginRequiredMixin, View):
+    def post(self, request, pk):
+        job = get_object_or_404(AutomationJob, pk=pk)
+
+        job.is_paused = True
+        job.next_run_at = None      # zera o próximo agendamento
+        job.save(update_fields=["is_paused", "next_run_at"])
+
+        # 🔹 Log de pausa de agendamento
+        log_automation_event(
+            job,
+            AutomationEvent.EventType.PAUSED,
+            user=request.user,
+            message="Agendamento pausado via interface.",
+        )
+
+        messages.info(request, f"Agendamento da automação '{job.name}' foi pausado.")
+        return redirect("automation:job_list")
+
+
+class AutomationJobResumeView(LoginRequiredMixin, View):
+    def post(self, request, pk):
+        job = get_object_or_404(AutomationJob, pk=pk)
+
+        job.is_paused = False
+        # recalcula próxima execução só se o job estiver ativo
+        if job.is_active:
+            job.next_run_at = job.compute_next_run(from_dt=timezone.now())
+        job.save(update_fields=["is_paused", "next_run_at"])
+
+        # 🔹 Log de retomada de agendamento
+        log_automation_event(
+            job,
+            AutomationEvent.EventType.RESUMED,
+            user=request.user,
+            message="Agendamento retomado via interface.",
+        )
+
+        messages.success(request, f"Agendamento da automação '{job.name}' foi retomado.")
+        return redirect("automation:job_list")
+
 
 class AutomationJobListView(LoginRequiredMixin, ListView):
     """
@@ -48,13 +88,12 @@ class AutomationJobListView(LoginRequiredMixin, ListView):
             AutomationJob.objects
             .annotate(
                 runs_total=Count("runs"),
-                last_run_at=Max("runs__started_at"),   # para colocar o horario de inicio na lista de automações na coluna execusão
-                #last_run_at = Max("runs__finished_at") para colocar o horario do termino na lista de automações na coluna execusão
-
+                # horário de INÍCIO da última execução
+                last_run_at=Max("runs__started_at"),
+                # se quiser horário de término, troque por finished_at
             )
             .order_by("name")
         )
-
 
 
 class AutomationJobCreateView(LoginRequiredMixin, CreateView):
@@ -132,6 +171,42 @@ class AutomationJobRunListView(LoginRequiredMixin, ListView):
         ctx["job"] = self.job  # pra mostrar informações da automação no topo
         return ctx
 
+class AutomationEventListView(LoginRequiredMixin, ListView):
+    """
+    Lista de eventos do orquestrador de automações (pausas, retomadas,
+    disparos manuais, falhas de agendamento etc.).
+    """
+
+    model = AutomationEvent
+    template_name = "automation/event_list.html"
+    context_object_name = "events"
+    paginate_by = 50
+
+    def get_queryset(self):
+        qs = (
+            AutomationEvent.objects
+            .select_related("job", "run", "triggered_by")
+            .order_by("-created_at")
+        )
+
+        job_id = self.request.GET.get("job")
+        if job_id:
+            qs = qs.filter(job_id=job_id)
+
+        event_type = self.request.GET.get("type")
+        if event_type:
+            qs = qs.filter(event_type=event_type)
+
+        return qs
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        ctx["jobs"] = AutomationJob.objects.order_by("name")
+        ctx["selected_job"] = self.request.GET.get("job") or ""
+        ctx["selected_type"] = self.request.GET.get("type") or ""
+        ctx["event_types"] = AutomationEvent.EventType.choices
+
+        return ctx
 
 # =========================
 #  Upload de arquivos do Job
@@ -185,8 +260,8 @@ class JobFilesView(LoginRequiredMixin, View):
         if safe_subdir:
             display_path += safe_subdir + "/"
 
-        # 🔹 NOVO: raiz "permitida" para download
-        ALLOWED_DOWNLOAD_ROOTS = ("entrada", "saida")        
+        # 🔹 raiz "permitida" para download
+        ALLOWED_DOWNLOAD_ROOTS = ("entrada", "saida")
 
         # qual a primeira pasta (top-level) desse subdir?
         first_segment = None
@@ -210,7 +285,6 @@ class JobFilesView(LoginRequiredMixin, View):
                         f"{safe_subdir}/{entry.name}" if safe_subdir else entry.name
                     )
 
-        
                 # 🔹 só deixa download se:
                 # - NÃO for diretório
                 # - estivermos dentro de 'entrada' ou 'saida'
@@ -224,11 +298,16 @@ class JobFilesView(LoginRequiredMixin, View):
                         "is_dir": is_dir,
                         "size": None if is_dir else stat.st_size,
                         "modified": timezone.datetime.fromtimestamp(
+                            stat.mtime,
+                            tz=timezone.get_current_timezone(),
+                        )
+                        if hasattr(stat, "mtime")
+                        else timezone.datetime.fromtimestamp(
                             stat.st_mtime,
                             tz=timezone.get_current_timezone(),
                         ),
                         "subdir_param": subdir_for_child,
-                        "can_download": can_download,   # 👈 NOVO
+                        "can_download": can_download,
                     }
                 )
 
@@ -245,7 +324,7 @@ class JobFilesView(LoginRequiredMixin, View):
             "files": files,
             "form": form,
             "current_path_display": display_path,
-            "current_subdir": subdir,   # 👈 para montar link de download
+            "current_subdir": subdir,
         }
         return render(request, self.template_name, context)
 
@@ -275,7 +354,9 @@ class JobFilesView(LoginRequiredMixin, View):
                 request,
                 f"{count} arquivo(s) enviado(s) para a pasta {display_path}.",
             )
-            return redirect(f"{reverse_lazy('automation:job_files', kwargs={'pk': job.pk})}?subdir={subdir}")
+            return redirect(
+                f"{reverse_lazy('automation:job_files', kwargs={'pk': job.pk})}?subdir={subdir}"
+            )
 
         # Se o form for inválido, re-renderiza com erros
         context = {
@@ -283,13 +364,10 @@ class JobFilesView(LoginRequiredMixin, View):
             "files": files,
             "form": form,
             "current_path_display": display_path,
-            "current_subdir": subdir,   # 👈 idem
+            "current_subdir": subdir,
         }
         return render(request, self.template_name, context)
 
-
-from django.http import FileResponse, Http404
-...
 
 class JobFileDownloadView(LoginRequiredMixin, View):
     """
@@ -349,7 +427,6 @@ class JobFileDownloadView(LoginRequiredMixin, View):
         )
 
 
-
 # =========================
 #  Disparo manual
 # =========================
@@ -357,15 +434,13 @@ class JobFileDownloadView(LoginRequiredMixin, View):
 @require_POST
 @login_required
 def run_job_now(request, pk):
-    ...
     job = get_object_or_404(AutomationJob, pk=pk)
 
-
-    # 🚫 NOVO: não deixa rodar se estiver inativa
+    # não deixa rodar se estiver inativa
     if not job.is_active:
         messages.error(
             request,
-            "Esta automação está inativa. Ative-a antes de executar manualmente."
+            "Esta automação está inativa. Ative-a antes de executar manualmente.",
         )
         return redirect("automation:job_list")
 
@@ -373,7 +448,7 @@ def run_job_now(request, pk):
         messages.error(request, "Esta automação não permite disparo manual.")
         return redirect("automation:job_list")
 
-    # 🚫 impede execução concorrente
+    # impede execução concorrente
     if AutomationRun.objects.filter(
         job=job,
         status=AutomationRun.Status.RUNNING,
@@ -384,6 +459,14 @@ def run_job_now(request, pk):
         )
         return redirect("automation:job_list")
 
+    # 🔹 Loga o fato de ter sido disparada manualmente
+    log_automation_event(
+        job,
+        AutomationEvent.EventType.MANUAL_START,
+        user=request.user,
+        message="Execução manual disparada via interface (run_job_now).",
+    )
+
     # Dispara em segundo plano
     execute_job_async(
         job,
@@ -399,24 +482,7 @@ def run_job_now(request, pk):
 
     return redirect("automation:job_list")
 
-    # Dispara em segundo plano
-    execute_job_async(
-        job,
-        triggered_by=request.user,
-        triggered_mode=AutomationRun.TriggerMode.MANUAL,
-    )
 
-    messages.success(
-        request,
-        f"Automação '{job.name}' enviada para execução em segundo plano. "
-        "Atualize a página em alguns instantes para ver o status.",
-    )
-
-    return redirect("automation:job_list")
-
-
-@require_POST
-@login_required
 @require_POST
 @login_required
 def stop_job(request, pk):
@@ -431,14 +497,14 @@ def stop_job(request, pk):
     if not run:
         messages.warning(
             request,
-            "Nenhuma execução em andamento para esta automação."
+            "Nenhuma execução em andamento para esta automação.",
         )
         return redirect("automation:job_list")
 
     if not run.external_pid:
         messages.error(
             request,
-            "PID do processo não está registrado; não foi possível solicitar parada."
+            "PID do processo não está registrado; não foi possível solicitar parada.",
         )
         return redirect("automation:job_list")
 
@@ -446,7 +512,6 @@ def stop_job(request, pk):
         # Tenta matar o processo
         os.kill(run.external_pid, signal.SIGTERM)
 
-        # Marca no log e atualiza status
         now = timezone.now()
         extra_log = (
             f"\n[{now.isoformat()}] ❌ Execução interrompida manualmente pelo usuário "
@@ -458,13 +523,32 @@ def stop_job(request, pk):
         run.finished_at = now
         run.save(update_fields=["log", "status", "finished_at"])
 
+        # 🔹 Log de parada manual
+        log_automation_event(
+            job,
+            AutomationEvent.EventType.MANUAL_STOP,
+            run=run,
+            user=request.user,
+            message="Execução interrompida manualmente via interface (stop_job).",
+            meta={"pid": run.external_pid},
+        )
+
         messages.success(request, "Parada da automação solicitada com sucesso.")
     except ProcessLookupError:
         # Processo já tinha morrido
         messages.warning(
             request,
-            "O processo já não estava mais em execução (foi finalizado antes)."
+            "O processo já não estava mais em execução (foi finalizado antes).",
+        )
+
+        # (opcional) logar esse caso também
+        log_automation_event(
+            job,
+            AutomationEvent.EventType.MANUAL_STOP,
+            run=run,
+            message="Tentativa de parada manual, mas o processo já havia finalizado (ProcessLookupError).",
+            user=request.user,
+            meta={"pid": run.external_pid},
         )
 
     return redirect("automation:job_list")
-

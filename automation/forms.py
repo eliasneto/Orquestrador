@@ -159,7 +159,7 @@ class AutomationJobForm(forms.ModelForm):
         """
         instance: AutomationJob = super().save(commit=False)
 
-        if not instance.is_active:
+        if not instance.is_active or instance.is_paused:
             instance.next_run_at = None
         else:
             now = timezone.now()
