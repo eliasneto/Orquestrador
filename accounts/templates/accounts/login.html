@@ -1,4 +1,5 @@
 {# accounts/templates/accounts/login.html #}
+{% load static %}
 <!DOCTYPE html>
 <html lang="pt-br">
 <head>
@@ -65,6 +66,16 @@
             display: flex;
             flex-direction: column;
             justify-content: space-between;
+        }
+
+        .brand-logo-img {
+            margin-bottom: 1.25rem;
+        }
+
+        .brand-logo-img img {
+            height: 64px;      /* ou 72 / 80 se ainda achar pequena */
+            width: auto;
+            display: block;
         }
 
         .brand-logo {
@@ -233,19 +244,25 @@
         <!-- ============================
              COLUNA ESQUERDA (BRANDING)
              ============================ -->
-        <div class="login-left">
-            <div>
-                <div class="brand-logo">
-                    <div class="brand-logo-mark">
-                        OR
+            <div class="login-left">
+                <div>
+                    <!-- Logo da empresa -->
+                    <div class="brand-logo-img">
+                        <img src="{% static 'img/Speed_v02-02.png' %}" alt="Logo da empresa">
                     </div>
-                    <div>
-                        <p class="brand-title mb-1">Orquestrador</p>
-                        <p class="brand-subtitle">
-                            Speed · Sistema Informação
-                        </p>
+
+                    <div class="brand-logo">
+                        <div class="brand-logo-mark">
+                            OR
+                        </div>
+                        <div>
+                            <p class="brand-title mb-1">Orquestrador</p>
+                            <p class="brand-subtitle">
+                                Speed · Sistema Informação
+                            </p>
+                        </div>
                     </div>
-                </div>
+
 
                 <h2>Bem-vindo de volta 👋</h2>
                 <p>
@@ -261,8 +278,8 @@
 
             <div class="mt-4">
                 <small style="opacity: 0.75;">
-                    Dica: use o usuário criado via <strong>Admin</strong>
-                    para o primeiro acesso.
+                    Dica: use o usuário para acessar a sua  <strong>Maquina</strong>
+                    local.
                 </small>
             </div>
         </div>
