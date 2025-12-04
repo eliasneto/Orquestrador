@@ -9,14 +9,15 @@ ENV PYTHONUNBUFFERED=1
 WORKDIR /app
 
 # Instalar dependências do sistema para:
-# - mysqlclient (já tinha)
-# - pyodbc (unixodbc + unixodbc-dev)
+# - mysqlclient  (libmysqlclient + build-essential + pkg-config)
+# - python-ldap  (libldap2-dev + libsasl2-dev + libssl-dev)
 RUN apt-get update && apt-get install -y \
     build-essential \
     default-libmysqlclient-dev \
     pkg-config \
-    unixodbc \
-    unixodbc-dev \
+    libldap2-dev \
+    libsasl2-dev \
+    libssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Copia requirements e instala dependências Python do projeto principal

@@ -24,9 +24,11 @@ from django.views.decorators.http import require_POST
 from django.contrib.auth.decorators import login_required
 from django.db.models import Count, Max
 from django.http import FileResponse, Http404
+
 from .forms import AutomationJobForm, JobFileUploadForm
 from .models import AutomationJob, AutomationRun, AutomationEvent
 from .services import execute_job_async, log_automation_event
+from .permissions import get_user_allowed_sectors, get_job_for_user_or_404
 
 
 # =========================
@@ -35,13 +37,13 @@ from .services import execute_job_async, log_automation_event
 
 class AutomationJobPauseView(LoginRequiredMixin, View):
     def post(self, request, pk):
-        job = get_object_or_404(AutomationJob, pk=pk)
+        job = get_job_for_user_or_404(request.user, pk)
 
         job.is_paused = True
-        job.next_run_at = None      # zera o próximo agendamento
+        job.next_run_at = None  # zera o próximo agendamento
         job.save(update_fields=["is_paused", "next_run_at"])
 
-        # 🔹 Log de pausa de agendamento
+        # Log de pausa de agendamento
         log_automation_event(
             job,
             AutomationEvent.EventType.PAUSED,
@@ -55,7 +57,7 @@ class AutomationJobPauseView(LoginRequiredMixin, View):
 
 class AutomationJobResumeView(LoginRequiredMixin, View):
     def post(self, request, pk):
-        job = get_object_or_404(AutomationJob, pk=pk)
+        job = get_job_for_user_or_404(request.user, pk)
 
         job.is_paused = False
         # recalcula próxima execução só se o job estiver ativo
@@ -63,7 +65,7 @@ class AutomationJobResumeView(LoginRequiredMixin, View):
             job.next_run_at = job.compute_next_run(from_dt=timezone.now())
         job.save(update_fields=["is_paused", "next_run_at"])
 
-        # 🔹 Log de retomada de agendamento
+        # Log de retomada de agendamento
         log_automation_event(
             job,
             AutomationEvent.EventType.RESUMED,
@@ -77,20 +79,22 @@ class AutomationJobResumeView(LoginRequiredMixin, View):
 
 class AutomationJobListView(LoginRequiredMixin, ListView):
     """
-    Lista todas as automações cadastradas.
+    Lista todas as automações que o usuário pode ver (filtradas por setor).
     """
     model = AutomationJob
     template_name = "automation/job_list.html"
     context_object_name = "jobs"
 
     def get_queryset(self):
+        allowed_sectors = get_user_allowed_sectors(self.request.user)
+
         return (
             AutomationJob.objects
+            .filter(sector__in=allowed_sectors)
             .annotate(
                 runs_total=Count("runs"),
                 # horário de INÍCIO da última execução
                 last_run_at=Max("runs__started_at"),
-                # se quiser horário de término, troque por finished_at
             )
             .order_by("name")
         )
@@ -132,13 +136,24 @@ class AutomationJobUpdateView(LoginRequiredMixin, UpdateView):
 
 class AutomationRunListView(LoginRequiredMixin, ListView):
     """
-    Lista de execuções recentes de todas as automações.
+    Lista de execuções recentes de todas as automações
+    que o usuário pode ver (pelos setores).
     """
 
     model = AutomationRun
     template_name = "automation/run_list.html"
     context_object_name = "runs"
     paginate_by = 20  # paginação simples
+
+    def get_queryset(self):
+        allowed_sectors = get_user_allowed_sectors(self.request.user)
+
+        return (
+            AutomationRun.objects
+            .select_related("job", "triggered_by")
+            .filter(job__sector__in=allowed_sectors)
+            .order_by("-started_at")
+        )
 
 
 class AutomationJobRunListView(LoginRequiredMixin, ListView):
@@ -154,8 +169,8 @@ class AutomationJobRunListView(LoginRequiredMixin, ListView):
     paginate_by = 20
 
     def dispatch(self, request, *args, **kwargs):
-        # Carregamos o job uma vez e guardamos em self.job
-        self.job = get_object_or_404(AutomationJob, pk=self.kwargs["pk"])
+        # Carregamos o job com verificação de permissão por setor
+        self.job = get_job_for_user_or_404(request.user, self.kwargs["pk"])
         return super().dispatch(request, *args, **kwargs)
 
     def get_queryset(self):
@@ -171,21 +186,27 @@ class AutomationJobRunListView(LoginRequiredMixin, ListView):
         ctx["job"] = self.job  # pra mostrar informações da automação no topo
         return ctx
 
+
 class AutomationEventListView(LoginRequiredMixin, ListView):
     """
     Lista de eventos do orquestrador de automações (pausas, retomadas,
-    disparos manuais, falhas de agendamento etc.).
+    disparos manuais, falhas de agendamento etc.), respeitando os setores.
     """
-
     model = AutomationEvent
     template_name = "automation/event_list.html"
     context_object_name = "events"
     paginate_by = 50
 
     def get_queryset(self):
+        allowed_sectors = get_user_allowed_sectors(self.request.user)
+        if not allowed_sectors:
+            # não vê nenhum evento
+            return AutomationEvent.objects.none()
+
         qs = (
             AutomationEvent.objects
             .select_related("job", "run", "triggered_by")
+            .filter(job__sector__in=allowed_sectors)
             .order_by("-created_at")
         )
 
@@ -201,11 +222,13 @@ class AutomationEventListView(LoginRequiredMixin, ListView):
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
-        ctx["jobs"] = AutomationJob.objects.order_by("name")
+        allowed_sectors = get_user_allowed_sectors(self.request.user)
+        ctx["jobs"] = AutomationJob.objects.filter(
+            sector__in=allowed_sectors
+        ).order_by("name")
         ctx["selected_job"] = self.request.GET.get("job") or ""
         ctx["selected_type"] = self.request.GET.get("type") or ""
         ctx["event_types"] = AutomationEvent.EventType.choices
-
         return ctx
 
 # =========================
@@ -221,7 +244,7 @@ class JobFilesView(LoginRequiredMixin, View):
 
     template_name = "automation/job_files.html"
 
-    def _get_job_and_files(self, pk, subdir_param=None):
+    def _get_job_and_files(self, user, pk, subdir_param=None):
         """
         subdir_param = string tipo:
           - None ou ""        -> pasta raiz (job_X/)
@@ -233,7 +256,7 @@ class JobFilesView(LoginRequiredMixin, View):
         - pasta atual exista
         - retorna lista de arquivos/pastas com info para o template
         """
-        job = get_object_or_404(AutomationJob, pk=pk)
+        job = get_job_for_user_or_404(user, pk)
 
         base_dir = job.get_job_dir()  # já cria job_X/entrada/ e job_X/saida/
         base_dir.mkdir(parents=True, exist_ok=True)
@@ -260,7 +283,7 @@ class JobFilesView(LoginRequiredMixin, View):
         if safe_subdir:
             display_path += safe_subdir + "/"
 
-        # 🔹 raiz "permitida" para download
+        # raiz "permitida" para download
         ALLOWED_DOWNLOAD_ROOTS = ("entrada", "saida")
 
         # qual a primeira pasta (top-level) desse subdir?
@@ -285,7 +308,7 @@ class JobFilesView(LoginRequiredMixin, View):
                         f"{safe_subdir}/{entry.name}" if safe_subdir else entry.name
                     )
 
-                # 🔹 só deixa download se:
+                # só deixa download se:
                 # - NÃO for diretório
                 # - estivermos dentro de 'entrada' ou 'saida'
                 can_download = False
@@ -298,11 +321,6 @@ class JobFilesView(LoginRequiredMixin, View):
                         "is_dir": is_dir,
                         "size": None if is_dir else stat.st_size,
                         "modified": timezone.datetime.fromtimestamp(
-                            stat.mtime,
-                            tz=timezone.get_current_timezone(),
-                        )
-                        if hasattr(stat, "mtime")
-                        else timezone.datetime.fromtimestamp(
                             stat.st_mtime,
                             tz=timezone.get_current_timezone(),
                         ),
@@ -316,7 +334,7 @@ class JobFilesView(LoginRequiredMixin, View):
     def get(self, request, pk):
         subdir = request.GET.get("subdir", "")
         job, base_dir, current_dir, display_path, files = self._get_job_and_files(
-            pk, subdir
+            request.user, pk, subdir
         )
         form = JobFileUploadForm()
         context = {
@@ -331,7 +349,7 @@ class JobFilesView(LoginRequiredMixin, View):
     def post(self, request, pk):
         subdir = request.GET.get("subdir", "")
         job, base_dir, current_dir, display_path, files = self._get_job_and_files(
-            pk, subdir
+            request.user, pk, subdir
         )
         form = JobFileUploadForm(request.POST, request.FILES)
 
@@ -378,7 +396,7 @@ class JobFileDownloadView(LoginRequiredMixin, View):
     ALLOWED_DOWNLOAD_ROOTS = ("entrada", "saida")
 
     def get(self, request, pk):
-        job = get_object_or_404(AutomationJob, pk=pk)
+        job = get_job_for_user_or_404(request.user, pk)
         base_dir = job.get_job_dir()
 
         subdir = (request.GET.get("subdir") or "").strip().strip("\\/")
@@ -408,7 +426,7 @@ class JobFileDownloadView(LoginRequiredMixin, View):
         if not file_path.exists() or not file_path.is_file():
             raise Http404("Arquivo não encontrado.")
 
-        # 🔒 GARANTIA: arquivo precisa estar dentro de 'entrada' ou 'saida'
+        # GARANTIA: arquivo precisa estar dentro de 'entrada' ou 'saida'
         try:
             rel_path = file_path.relative_to(base_dir)
         except ValueError:
@@ -434,7 +452,7 @@ class JobFileDownloadView(LoginRequiredMixin, View):
 @require_POST
 @login_required
 def run_job_now(request, pk):
-    job = get_object_or_404(AutomationJob, pk=pk)
+    job = get_job_for_user_or_404(request.user, pk)
 
     # não deixa rodar se estiver inativa
     if not job.is_active:
@@ -459,7 +477,7 @@ def run_job_now(request, pk):
         )
         return redirect("automation:job_list")
 
-    # 🔹 Loga o fato de ter sido disparada manualmente
+    # Loga o fato de ter sido disparada manualmente
     log_automation_event(
         job,
         AutomationEvent.EventType.MANUAL_START,
@@ -486,7 +504,7 @@ def run_job_now(request, pk):
 @require_POST
 @login_required
 def stop_job(request, pk):
-    job = get_object_or_404(AutomationJob, pk=pk)
+    job = get_job_for_user_or_404(request.user, pk)
 
     # Procura uma execução em andamento desse job
     run = AutomationRun.objects.filter(
@@ -523,7 +541,7 @@ def stop_job(request, pk):
         run.finished_at = now
         run.save(update_fields=["log", "status", "finished_at"])
 
-        # 🔹 Log de parada manual
+        # Log de parada manual
         log_automation_event(
             job,
             AutomationEvent.EventType.MANUAL_STOP,
@@ -541,7 +559,7 @@ def stop_job(request, pk):
             "O processo já não estava mais em execução (foi finalizado antes).",
         )
 
-        # (opcional) logar esse caso também
+        # logar esse caso também
         log_automation_event(
             job,
             AutomationEvent.EventType.MANUAL_STOP,

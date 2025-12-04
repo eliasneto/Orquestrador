@@ -19,7 +19,8 @@ User = get_user_model()
 import datetime as dt
 from datetime import timedelta
 from django.utils.text import slugify
-
+from django.contrib.auth.models import Group
+# (provavelmente isso já está no topo; se não estiver, adicione)
 
 # automation/models.py (apenas a classe AutomationJob)
 
@@ -486,3 +487,30 @@ class AutomationEvent(models.Model):
 
     def __str__(self):
         return f"[{self.created_at:%d/%m %H:%M}] {self.event_type} – {self.job.code}"
+
+
+
+class AutomationSectorPermission(models.Model):
+    """
+    Liga um Grupo do Django a um ou mais 'setores' de automação.
+    Ex.: Grupo 'Financeiro' -> setor 'financeiro'
+    """
+    group = models.ForeignKey(
+        Group,
+        on_delete=models.CASCADE,
+        related_name="automation_sector_perms",
+        verbose_name="Grupo",
+    )
+    sector = models.CharField(
+        "Setor",
+        max_length=50,
+        choices=AutomationJob.Sector.choices,
+    )
+
+    class Meta:
+        unique_together = ("group", "sector")
+        verbose_name = "Permissão de setor de automação"
+        verbose_name_plural = "Permissões de setor de automação"
+
+    def __str__(self):
+        return f"{self.group.name} → {self.get_sector_display()}"
