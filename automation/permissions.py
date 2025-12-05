@@ -48,3 +48,7 @@ def get_job_for_user_or_404(user, pk):
         raise PermissionDenied("Você não tem acesso a esta automação.")
 
     return job
+
+
+
+

@@ -262,3 +262,9 @@ AUTOMATIONS_WORKSPACE_ROOT = BASE_DIR / "automation_workspaces"
 LOGIN_URL = "/accounts/login/"
 LOGIN_REDIRECT_URL = "/"
 LOGOUT_REDIRECT_URL = "/accounts/login/"
+
+# Tempo da sessão em segundos (10 minutos)
+SESSION_COOKIE_AGE = 10 * 60  # 10 minutos
+
+# Renova o tempo de expiração a cada requisição do usuário
+SESSION_SAVE_EVERY_REQUEST = True

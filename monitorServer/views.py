@@ -154,6 +154,7 @@ class SystemHealthView(LoginRequiredMixin, TemplateView):
         return ctx
 
 
+@login_required
 def system_health_api(request):
     """
     Endpoint JSON para retornar as métricas.
@@ -162,6 +163,7 @@ def system_health_api(request):
     """
     metrics = get_system_metrics()
     return JsonResponse(metrics)
+
 
 @require_POST
 @login_required
@@ -181,16 +183,17 @@ def kill_process_api(request):
     try:
         data = json.loads(request.body.decode("utf-8"))
         pid = int(data.get("pid"))
-    except (ValueError, TypeError, json.JSONDecodeError):
-        return JsonResponse({"error": "PID inválido."}, status=400)
 
-    try:
+        if pid <= 0:
+            return JsonResponse({"error": "PID inválido."}, status=400)
+
         proc = psutil.Process(pid)
         proc.terminate()  # tenta encerrar “educadamente”
         try:
             proc.wait(timeout=3)
         except psutil.TimeoutExpired:
-            proc.kill()   # se não morre, mata na força
+            proc.kill()   # se não morrer, mata na força
+
         return JsonResponse({"status": "ok", "pid": pid})
     except psutil.NoSuchProcess:
         return JsonResponse({"error": "Processo não existe mais."}, status=404)
@@ -198,3 +201,4 @@ def kill_process_api(request):
         return JsonResponse({"error": "Acesso negado para esse processo."}, status=403)
     except Exception as e:
         return JsonResponse({"error": f"Erro inesperado: {e}"}, status=500)
+

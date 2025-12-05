@@ -4,9 +4,10 @@ Views do módulo de automação.
 
 Inclui:
 - Lista de automações (jobs)
-- Criação/edição de automação
-- Lista de execuções
-- Endpoint para disparo manual ("Executar agora")
+- Criação/edição/pausa/retomada de automação
+- Lista de execuções e detalhes
+- Logs de eventos do orquestrador
+- Endpoint para disparo/parada manual ("Executar agora" / "Parar")
 - Tela de arquivos da automação (pasta + venv)
 """
 
@@ -16,15 +17,16 @@ import signal
 
 from django.utils import timezone
 from django.contrib import messages
-from django.views.generic import ListView, CreateView, UpdateView, View
+from django.views.generic import ListView, CreateView, UpdateView, DeleteView, DetailView, View
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.shortcuts import get_object_or_404, redirect, render
+from django.shortcuts import redirect, render
 from django.urls import reverse_lazy
 from django.views.decorators.http import require_POST
 from django.contrib.auth.decorators import login_required
 from django.db.models import Count, Max
 from django.http import FileResponse, Http404
 
+from accounts.permissions import AdminRequiredMixin  # vamos usar só Admin para restringir
 from .forms import AutomationJobForm, JobFileUploadForm
 from .models import AutomationJob, AutomationRun, AutomationEvent
 from .services import execute_job_async, log_automation_event
@@ -32,10 +34,14 @@ from .permissions import get_user_allowed_sectors, get_job_for_user_or_404
 
 
 # =========================
-#  Listagem e cadastro
+#  Pausar / retomar agendamento (ADMIN)
 # =========================
 
-class AutomationJobPauseView(LoginRequiredMixin, View):
+class AutomationJobPauseView(LoginRequiredMixin, AdminRequiredMixin, View):
+    """
+    Pausar o agendamento de uma automação.
+    Somente Administrador.
+    """
     def post(self, request, pk):
         job = get_job_for_user_or_404(request.user, pk)
 
@@ -55,7 +61,11 @@ class AutomationJobPauseView(LoginRequiredMixin, View):
         return redirect("automation:job_list")
 
 
-class AutomationJobResumeView(LoginRequiredMixin, View):
+class AutomationJobResumeView(LoginRequiredMixin, AdminRequiredMixin, View):
+    """
+    Retomar o agendamento de uma automação.
+    Somente Administrador.
+    """
     def post(self, request, pk):
         job = get_job_for_user_or_404(request.user, pk)
 
@@ -77,9 +87,14 @@ class AutomationJobResumeView(LoginRequiredMixin, View):
         return redirect("automation:job_list")
 
 
+# =========================
+#  Listagem e cadastro
+# =========================
+
 class AutomationJobListView(LoginRequiredMixin, ListView):
     """
     Lista todas as automações que o usuário pode ver (filtradas por setor).
+    Qualquer usuário LOGADO (operador ou admin) pode ver.
     """
     model = AutomationJob
     template_name = "automation/job_list.html"
@@ -100,11 +115,11 @@ class AutomationJobListView(LoginRequiredMixin, ListView):
         )
 
 
-class AutomationJobCreateView(LoginRequiredMixin, CreateView):
+class AutomationJobCreateView(LoginRequiredMixin, AdminRequiredMixin, CreateView):
     """
     Tela de criação de uma nova automação.
+    SOMENTE Administrador.
     """
-
     model = AutomationJob
     form_class = AutomationJobForm
     template_name = "automation/job_form.html"
@@ -115,11 +130,11 @@ class AutomationJobCreateView(LoginRequiredMixin, CreateView):
         return super().form_valid(form)
 
 
-class AutomationJobUpdateView(LoginRequiredMixin, UpdateView):
+class AutomationJobUpdateView(LoginRequiredMixin, AdminRequiredMixin, UpdateView):
     """
     Tela de edição de uma automação existente.
+    SOMENTE Administrador.
     """
-
     model = AutomationJob
     form_class = AutomationJobForm
     template_name = "automation/job_form.html"
@@ -130,16 +145,26 @@ class AutomationJobUpdateView(LoginRequiredMixin, UpdateView):
         return super().form_valid(form)
 
 
+class AutomationJobDeleteView(LoginRequiredMixin, AdminRequiredMixin, DeleteView):
+    """
+    Exclusão de uma automação.
+    SOMENTE Administrador.
+    """
+    model = AutomationJob
+    template_name = "automation/job_confirm_delete.html"
+    success_url = reverse_lazy("automation:job_list")
+
+
 # =========================
-#  Históricos de execução
+#  Históricos de execução (OPERADOR + ADMIN)
 # =========================
 
 class AutomationRunListView(LoginRequiredMixin, ListView):
     """
     Lista de execuções recentes de todas as automações
     que o usuário pode ver (pelos setores).
+    Qualquer usuário logado (operador/admin).
     """
-
     model = AutomationRun
     template_name = "automation/run_list.html"
     context_object_name = "runs"
@@ -161,8 +186,8 @@ class AutomationJobRunListView(LoginRequiredMixin, ListView):
     Lista de execuções de UMA automação específica.
 
     Usado quando o usuário clica no nome da automação na tela de jobs.
+    Qualquer usuário logado com acesso ao setor do job.
     """
-
     model = AutomationRun
     template_name = "automation/job_runs.html"
     context_object_name = "runs"
@@ -187,10 +212,10 @@ class AutomationJobRunListView(LoginRequiredMixin, ListView):
         return ctx
 
 
-class AutomationEventListView(LoginRequiredMixin, ListView):
+class AutomationEventListView(LoginRequiredMixin, AdminRequiredMixin, ListView):
     """
-    Lista de eventos do orquestrador de automações (pausas, retomadas,
-    disparos manuais, falhas de agendamento etc.), respeitando os setores.
+    Logs do ORQUESTRADOR (pausas, retomadas, disparos manuais, falhas de agendamento etc.).
+    SOMENTE Administrador.
     """
     model = AutomationEvent
     template_name = "automation/event_list.html"
@@ -223,21 +248,25 @@ class AutomationEventListView(LoginRequiredMixin, ListView):
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
         allowed_sectors = get_user_allowed_sectors(self.request.user)
-        ctx["jobs"] = AutomationJob.objects.filter(
-            sector__in=allowed_sectors
-        ).order_by("name")
+        ctx["jobs"] = (
+            AutomationJob.objects
+            .filter(sector__in=allowed_sectors)
+            .order_by("name")
+        )
         ctx["selected_job"] = self.request.GET.get("job") or ""
         ctx["selected_type"] = self.request.GET.get("type") or ""
         ctx["event_types"] = AutomationEvent.EventType.choices
         return ctx
 
+
 # =========================
-#  Upload de arquivos do Job
+#  Upload de arquivos do Job (OPERADOR + ADMIN)
 # =========================
 
 class JobFilesView(LoginRequiredMixin, View):
     """
     Tela para gerenciar os arquivos de uma automação (pasta + venv).
+    Qualquer usuário logado com acesso ao setor do job.
     - GET: mostra arquivos que já estão na pasta (raiz ou subpasta)
     - POST: recebe upload de arquivos e grava na pasta atual
     """
@@ -344,7 +373,7 @@ class JobFilesView(LoginRequiredMixin, View):
             "current_path_display": display_path,
             "current_subdir": subdir,
         }
-        return render(request, self.template_name, context)
+        return render(self.request, self.template_name, context)
 
     def post(self, request, pk):
         subdir = request.GET.get("subdir", "")
@@ -373,7 +402,7 @@ class JobFilesView(LoginRequiredMixin, View):
                 f"{count} arquivo(s) enviado(s) para a pasta {display_path}.",
             )
             return redirect(
-                f"{reverse_lazy('automation:job_files', kwargs={'pk': job.pk})}?subdir={subdir}"
+                f"{reverse_lazy('automation:job_files', kwargs={'pk': job.pk})}?={subdir}"
             )
 
         # Se o form for inválido, re-renderiza com erros
@@ -387,10 +416,12 @@ class JobFilesView(LoginRequiredMixin, View):
         return render(request, self.template_name, context)
 
 
+
 class JobFileDownloadView(LoginRequiredMixin, View):
     """
     Faz download de um arquivo de 'entrada' ou 'saida' de uma automação.
     Não permite baixar arquivos de outras pastas (scripts, etc).
+    Qualquer usuário logado com acesso ao setor do job.
     """
 
     ALLOWED_DOWNLOAD_ROOTS = ("entrada", "saida")
@@ -446,11 +477,11 @@ class JobFileDownloadView(LoginRequiredMixin, View):
 
 
 # =========================
-#  Disparo manual
+#  Disparo manual (OPERADOR + ADMIN)
 # =========================
 
 @require_POST
-@login_required
+@login_required  # qualquer usuário logado pode rodar automação
 def run_job_now(request, pk):
     job = get_job_for_user_or_404(request.user, pk)
 
@@ -502,7 +533,7 @@ def run_job_now(request, pk):
 
 
 @require_POST
-@login_required
+@login_required  # qualquer usuário logado pode solicitar parada
 def stop_job(request, pk):
     job = get_job_for_user_or_404(request.user, pk)
 
