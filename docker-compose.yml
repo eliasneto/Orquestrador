@@ -29,7 +29,7 @@ services:
     depends_on:
       - db
     ports:
-      - "8001:8000"   # acessar Django em http://localhost:8001
+      - "8001:8001"   # acessar Django em http://localhost:8001
     volumes:
       # pra desenvolvimento, mantém código sincronizado
       - .:/app

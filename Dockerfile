@@ -30,7 +30,7 @@ RUN pip install --upgrade pip && \
 COPY . /app/
 
 # Expor porta 8000 (Django/Gunicorn)
-EXPOSE 8000
+EXPOSE 8001
 
 # Comando padrão (pode ser sobrescrito no docker-compose)
-CMD ["gunicorn", "orquestrador.wsgi:application", "--bind", "0.0.0.0:8000"]
+CMD ["gunicorn", "orquestrador.wsgi:application", "--bind", "0.0.0.0:8001"]
