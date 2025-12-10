@@ -18,7 +18,7 @@ USE_AD_AUTH = os.getenv("USE_AD_AUTH", "false").lower() == "true"
 
 # Se USE_SQLITE=true (ou não existir), usa SQLite.
 # Se USE_SQLITE=false, usa MySQL.
-USE_SQLITE = os.getenv("USE_SQLITE", "true").lower() == "true"
+USE_SQLITE = os.getenv("USE_SQLITE", "true").lower() == "false"
 
 # ============================================
 #  CONFIGURAÇÕES BÁSICAS DJANGO
@@ -35,6 +35,7 @@ ALLOWED_HOSTS = [
     "127.0.0.1",
     "localhost",
     "192.168.18.35",
+    "*",
 ]
 
 # ============================================
