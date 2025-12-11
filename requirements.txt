@@ -17,4 +17,3 @@ tzdata==2025.2
 python-ldap
 django-auth-ldap
 mysqlclient
-wait-for-db
