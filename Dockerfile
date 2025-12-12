@@ -25,7 +25,13 @@ RUN apt-get update && apt-get install -y \
 ENV DOCKERIZE_VERSION v0.6.1
 RUN wget https://github.com/jwilder/dockerize/releases/download/$DOCKERIZE_VERSION/dockerize-linux-amd64-$DOCKERIZE_VERSION.tar.gz \
     && tar -C /usr/local/bin -xzvf dockerize-linux-amd64-$DOCKERIZE_VERSION.tar.gz \
-    && rm dockerize-linux-amd64-$DOCKERIZE_VERSION.tar.gz
+    && rm dockerize-linux-amd64-$DOCKERIZE_VERSION.tar.gz \
+    apt-get update && apt-get install -y unixodbc unixodbc-dev \
+    apt-get update && apt-get install -y curl gnupg2 unixodbc unixodbc-dev \
+    && curl https://packages.microsoft.com/keys/microsoft.asc | apt-key add - \
+    && curl https://packages.microsoft.com/config/debian/11/prod.list > /etc/apt/sources.list.d/mssql-release.list \
+    && apt-get update \
+    && ACCEPT_EULA=Y apt-get install -y msodbcsql17
 # Copia requirements e instala dependências Python do projeto principal
 COPY requirements.txt /app/
 

@@ -17,3 +17,4 @@ tzdata==2025.2
 python-ldap
 django-auth-ldap
 mysqlclient
+psycopg2-binary==2.9.10
