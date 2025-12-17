@@ -35,7 +35,7 @@ def get_job_for_user_or_404(user, pk):
     return job
 
 
-ORQ_ADMIN_GROUP = "administrador"
+ORQ_ADMIN_GROUP = "Orquestrador_ADM"
 
 
 def is_orquestrador_admin(user) -> bool:

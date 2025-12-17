@@ -40,7 +40,6 @@ Gerencie scripts externos organizados em pastas com ambiente virtual dedicado (p
             <h5 class="card-title mb-3">Automações cadastradas</h5>
 
             {% if jobs %}
-                <div class="table-responsive">
                     <table class="table table-clean align-middle mb-0">
                         <thead>
                             <tr>
@@ -59,13 +58,23 @@ Gerencie scripts externos organizados em pastas com ambiente virtual dedicado (p
                                 <tr>
                                     <td>
                                         <a href="{% url 'automation:job_runs' job.pk %}"
-                                           class="text-decoration-none">
+                                        class="text-decoration-none d-inline-flex align-items-center gap-1">
+
                                             <strong>{{ job.name }}</strong>
-                                        </a><br>
+                                            {% if job.description %}
+                                                <span class="info-tooltip"
+                                                    data-tooltip="{{ job.description }}">
+                                                    <i class="bi bi-info-circle"></i>
+                                                </span>
+                                            {% endif %}
+                                        </a>
+                                        <br>
+
                                         <small class="text-muted">
                                             Código: {{ job.code }}
                                         </small>
                                     </td>
+
 
                                     <td>
                                         <span class="badge bg-secondary-subtle text-body-secondary">
@@ -249,7 +258,7 @@ Gerencie scripts externos organizados em pastas com ambiente virtual dedicado (p
                             {% endfor %}
                         </tbody>
                     </table>
-                </div>
+
             {% else %}
                 <p class="text-muted mb-0">
                     Nenhuma automação cadastrada ainda.
@@ -277,5 +286,109 @@ Gerencie scripts externos organizados em pastas com ambiente virtual dedicado (p
         font-size: 1.5rem;
     }
 </style>
+
+<style>
+.info-tooltip {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    margin-left: 6px;
+    color: #0d6efd;
+    cursor: pointer;
+}
+
+/* Painel flutuante grande */
+.info-tooltip::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    top: 120%;
+    left: 0;
+
+    background: #ffffff;
+    color: #1f2937;
+
+    width: 1520px;          /* 👈 aumenta largura */
+    max-width: 60vw;       /* mantém responsivo */
+
+    padding: 20px 22px;    /* mais respiro */
+    border-radius: 12px;
+
+    font-size: 15px;       /* texto maior */
+    line-height: 1.7;
+    max-height: 260px;     /* controla altura */
+    border: 1px solid #e5e7eb;
+    box-shadow: 0 16px 32px rgba(0,0,0,.15);
+
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .2s ease, transform .2s ease;
+    transform: translateY(-6px);
+    overflow-y: auto;      /* scroll se necessário */
+    z-index: 9999;
+}
+
+/* Seta */
+.info-tooltip::before {
+    content: "";
+    position: absolute;
+    top: 110%;
+    left: 14px;
+
+    border-width: 7px;
+    border-style: solid;
+    border-color: transparent transparent #ffffff transparent;
+
+    opacity: 0;
+    transition: opacity .2s ease;
+}
+
+.info-tooltip:hover::after,
+.info-tooltip:hover::before {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+
+
+/* Card principal – painel branco grande */
+.module-card {
+    background: #ffffff;
+    border: none;
+    border-radius: 20px;
+
+    padding: 24px 28px;     /* 👈 mais espaço interno */
+    box-shadow: 0 20px 40px rgba(0,0,0,.10);
+
+    min-height: 300px;      /* 👈 sensação de painel */
+}
+/* Título do card */
+.module-card .card-title {
+    font-size: 1.25rem;
+    font-weight: 600;
+    margin-bottom: 12px;
+}
+
+/* Tabela mais espaçada */
+.table-clean th,
+.table-clean td {
+    padding: 14px 16px;
+    vertical-align: middle;
+}
+
+/* Linha hover elegante */
+.table-clean tbody tr:hover {
+    background-color: #f9fafb;
+}
+
+.container-fluid {
+    max-width: 1500px;
+    margin: 16px auto;      /* 👈 metade do espaço */
+    padding-left: 24px;
+    padding-right: 24px;
+}
+
+
+</style>
+
 
 {% endblock %}
