@@ -38,7 +38,10 @@ class AutomationJob(models.Model):
         FINANCEIRO = "financeiro", "Financeiro"
         COMERCIAL = "comercial", "Comercial"
         TI = "ti", "TI"
-        # pode ir acrescentando mais se precisar        
+        JURIDICO = "juridico", "Jurídico"
+        ADMINISTRADOR = "administrador", "Administrador"
+        # "juridico" = valor salvo no banco (sem acento)
+        # "Jurídico" = texto exibido no admin (com acento)     
 
     name = models.CharField("Nome da automação", max_length=200)
 

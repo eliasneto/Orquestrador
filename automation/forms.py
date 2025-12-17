@@ -5,6 +5,7 @@ from django import forms
 from django.utils import timezone
 
 from .models import AutomationJob
+from .permissions import get_user_allowed_sectors  # 👈 add
 
 
 class AutomationJobForm(forms.ModelForm):
@@ -18,9 +19,9 @@ class AutomationJobForm(forms.ModelForm):
             "is_active",
             "allow_manual",
             "schedule_type",
-            "one_off_run_at",      # 👈 pontual
+            "one_off_run_at",
             "daily_time",
-            "multi_daily_times",   # 👈 horários múltiplos (08:00, 13:00, 18:00…)
+            "multi_daily_times",
             "interval_minutes",
             "next_run_at",
         ]
@@ -35,9 +36,7 @@ class AutomationJobForm(forms.ModelForm):
                     "placeholder": "Explique rapidamente o que essa automação faz.",
                 }
             ),
-            "sector": forms.Select(
-                attrs={"class": "form-select"},
-            ),
+            "sector": forms.Select(attrs={"class": "form-select"}),
             "external_main_script": forms.TextInput(
                 attrs={"class": "form-control", "placeholder": "main.py"}
             ),
@@ -45,18 +44,11 @@ class AutomationJobForm(forms.ModelForm):
             "one_off_run_at": forms.DateTimeInput(
                 attrs={"class": "form-control", "type": "datetime-local"}
             ),
-            "daily_time": forms.TimeInput(
-                attrs={"class": "form-control", "type": "time"}
-            ),
+            "daily_time": forms.TimeInput(attrs={"class": "form-control", "type": "time"}),
             "multi_daily_times": forms.TextInput(
-                attrs={
-                    "class": "form-control",
-                    "placeholder": "Ex.: 08:00, 13:00, 18:00",
-                }
+                attrs={"class": "form-control", "placeholder": "Ex.: 08:00, 13:00, 18:00"}
             ),
-            "interval_minutes": forms.NumberInput(
-                attrs={"class": "form-control", "min": "1"}
-            ),
+            "interval_minutes": forms.NumberInput(attrs={"class": "form-control", "min": "1"}),
             "next_run_at": forms.DateTimeInput(
                 attrs={"class": "form-control", "type": "datetime-local"}
             ),
@@ -65,10 +57,19 @@ class AutomationJobForm(forms.ModelForm):
         }
 
     def __init__(self, *args, **kwargs):
+        self.user = kwargs.pop("user", None)  # 👈 pega user do view
         super().__init__(*args, **kwargs)
+
+        # ✅ limita setores pelo que o usuário tem permissão
+        if self.user and self.user.is_authenticated and "sector" in self.fields:
+            allowed = set(get_user_allowed_sectors(self.user))
+            self.fields["sector"].choices = [
+                (value, label)
+                for (value, label) in AutomationJob.Sector.choices
+                if value in allowed
+            ]
+
         f = self.fields
-        # Código é gerado automaticamente
-        #self.fields["code"].required = False
 
         if "schedule_type" in f:
             f["schedule_type"].label = "Tipo de agendamento"
@@ -79,22 +80,17 @@ class AutomationJobForm(forms.ModelForm):
         if "one_off_run_at" in f:
             f["one_off_run_at"].label = "Data/hora única (pontual)"
             f["one_off_run_at"].help_text = (
-                "Usado quando o tipo de agendamento for 'pontual'. "
-                "Define quando rodar uma única vez."
+                "Usado quando o tipo de agendamento for 'pontual'. Define quando rodar uma única vez."
             )
             f["one_off_run_at"].required = False
 
         if "daily_time" in f:
             f["daily_time"].label = "Horário diário"
-            f["daily_time"].help_text = (
-                "Usado quando o agendamento for diário (ex.: 10:30)."
-            )
+            f["daily_time"].help_text = "Usado quando o agendamento for diário (ex.: 10:30)."
 
         if "interval_minutes" in f:
             f["interval_minutes"].label = "Intervalo (minutos)"
-            f["interval_minutes"].help_text = (
-                "Usado quando o agendamento for 'a cada N minutos'."
-            )
+            f["interval_minutes"].help_text = "Usado quando o agendamento for 'a cada N minutos'."
 
         if "next_run_at" in f:
             f["next_run_at"].label = "Próxima execução"
@@ -106,8 +102,7 @@ class AutomationJobForm(forms.ModelForm):
         if "multi_daily_times" in f:
             f["multi_daily_times"].label = "Horários diários (lista)"
             f["multi_daily_times"].help_text = (
-                "Informe horários HH:MM separados por vírgula. "
-                "Ex.: 08:00, 13:00, 18:00"
+                "Informe horários HH:MM separados por vírgula. Ex.: 08:00, 13:00, 18:00"
             )
             f["multi_daily_times"].required = False
 
@@ -116,47 +111,19 @@ class AutomationJobForm(forms.ModelForm):
         schedule_type = cleaned.get("schedule_type")
         daily_time = cleaned.get("daily_time")
         interval_minutes = cleaned.get("interval_minutes")
-        one_off_run_at = cleaned.get("one_off_run_at")
 
-        # Diário → precisa de horário base
         if schedule_type == AutomationJob.ScheduleType.DAILY and not daily_time:
-            self.add_error(
-                "daily_time",
-                "Informe o horário diário para este tipo de agendamento.",
-            )
+            self.add_error("daily_time", "Informe o horário diário para este tipo de agendamento.")
 
-        # Intervalo → precisa de minutos >= 1
         if schedule_type == AutomationJob.ScheduleType.INTERVAL:
             if not interval_minutes:
-                self.add_error(
-                    "interval_minutes",
-                    "Informe o intervalo em minutos.",
-                )
+                self.add_error("interval_minutes", "Informe o intervalo em minutos.")
             elif interval_minutes < 1:
-                self.add_error(
-                    "interval_minutes",
-                    "O intervalo mínimo é de 1 minuto.",
-                )
-
-        # Pontual → se quiser obrigar uma data/hora, é aqui
-        if schedule_type == AutomationJob.ScheduleType.ONCE:
-            # if not one_off_run_at:
-            #     self.add_error(
-            #         "one_off_run_at",
-            #         "Informe a data/hora para execução pontual.",
-            #     )
-            pass
+                self.add_error("interval_minutes", "O intervalo mínimo é de 1 minuto.")
 
         return cleaned
 
     def save(self, commit=True):
-        """
-        Ajusta next_run_at com base no tipo de agendamento:
-
-        - once: next_run_at = one_off_run_at
-        - daily: next_run_at = compute_next_run()
-        - interval: next_run_at = agora + interval_minutes
-        """
         instance: AutomationJob = super().save(commit=False)
 
         if not instance.is_active or instance.is_paused:
@@ -181,6 +148,7 @@ class AutomationJobForm(forms.ModelForm):
             self.save_m2m()
 
         return instance
+
 
 
 # ---------- Upload múltiplo de arquivos (para a tela de arquivos do job) ----------

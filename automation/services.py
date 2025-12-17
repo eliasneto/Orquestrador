@@ -2,21 +2,21 @@
 """
 Serviços de execução de automações.
 
-Versão simplificada: **somente modelo pasta + venv**.
+Modelo: **pasta + venv por job**
 
 Fluxo:
-- Cada AutomationJob tem uma pasta dedicada: BASE/automation_jobs/job_<id>/
-- Dentro dessa pasta o usuário pode colocar:
+- Cada AutomationJob tem uma pasta: BASE/automation_jobs/job_<id>/
+- Dentro dela ficam:
     - requirements.txt  (opcional)
-    - main.py           (ou outro nome definido em external_main_script)
-    - quaisquer outros arquivos necessários
+    - main.py (ou outro nome definido em external_main_script)
+    - quaisquer arquivos da automação
 
-Quando uma automação é executada:
-1) Garante que a pasta do job existe.
-2) Garante que exista um .venv dentro da pasta (cria se não existir).
-3) Se existir requirements.txt, instala/atualiza as libs nesse venv.
-4) Executa o script principal usando o python do venv.
-5) Salva STDOUT/STDERR no campo log de AutomationRun.
+Execução:
+1) Garante pasta do job
+2) Garante .venv dentro da pasta (cria se não existir)
+3) Se existir requirements.txt, instala/atualiza libs no venv
+4) Executa o script principal usando python do venv
+5) Salva log (stdout/stderr) no campo log de AutomationRun (com live update)
 """
 
 from __future__ import annotations
@@ -26,23 +26,80 @@ import os
 import subprocess
 import sys
 import threading
+import time
 import traceback
 from pathlib import Path
-from typing import Optional
 
 from django.conf import settings
 from django.utils import timezone
 
-from .models import AutomationJob, AutomationRun, AutomationEvent
-
+from .models import AutomationEvent, AutomationJob, AutomationRun
 
 # ==========================
 #  Caminhos básicos
 # ==========================
 
-# Raiz onde ficarão as pastas das automações
 AUTOMATION_ROOT = Path(settings.BASE_DIR) / "automation_jobs"
 AUTOMATION_ROOT.mkdir(parents=True, exist_ok=True)
+
+
+# ==========================
+#  Logger "ao vivo" (DB)
+# ==========================
+
+class LiveRunLogger:
+    """
+    Buffer que acumula em memória e também grava periodicamente em run.log no banco,
+    para o front mostrar o log "em tempo real".
+    """
+    def __init__(self, run: AutomationRun, flush_interval: float = 1.0, max_chars: int = 200_000):
+        self.run = run
+        self.flush_interval = flush_interval
+        self.max_chars = max_chars
+        self._buf = io.StringIO()
+        self._last_flush = 0.0
+
+    def write(self, text: str):
+        if not text:
+            return
+        self._buf.write(text)
+        now = time.monotonic()
+        if now - self._last_flush >= self.flush_interval:
+            self.flush()
+
+    def flush(self):
+        val = self._buf.getvalue()
+
+        # evita crescer infinito no banco
+        if self.max_chars and len(val) > self.max_chars:
+            val = val[-self.max_chars:]
+            self._buf = io.StringIO()
+            self._buf.write(val)
+
+        self.run.log = val
+        self.run.save(update_fields=["log"])
+        self._last_flush = time.monotonic()
+
+    def getvalue(self) -> str:
+        return self._buf.getvalue()
+
+
+def _log(buffer, msg: str):
+    """Log compatível com LiveRunLogger / StringIO / arquivo / list."""
+    if msg is None:
+        return
+    if not msg.endswith("\n"):
+        msg += "\n"
+
+    if hasattr(buffer, "write"):
+        buffer.write(msg)
+        return
+
+    if isinstance(buffer, list):
+        buffer.append(msg)
+        return
+
+    print(msg, end="")
 
 
 # ==========================
@@ -54,29 +111,24 @@ def run_pending_jobs():
     Dispara automaticamente os jobs agendados cujo next_run_at já passou.
     Deve ser chamada periodicamente (ex.: a cada 1 minuto).
 
-    Agora também registra eventos quando:
-    - o job está pausado e a execução é pulada.
+    Também registra evento quando job está pausado e a execução é pulada.
     """
     now = timezone.now()
 
-    # Jobs ativos, NÃO pausados, com próxima execução vencida
     jobs_to_run = (
         AutomationJob.objects.filter(is_active=True, is_paused=False)
         .exclude(next_run_at__isnull=True)
         .filter(next_run_at__lte=now)
     )
 
-    # Jobs ativos, MAS pausados, com próxima execução vencida
-    # -> não executa, apenas registra que foi ignorado
     paused_jobs = (
         AutomationJob.objects.filter(is_active=True, is_paused=True)
         .exclude(next_run_at__isnull=True)
         .filter(next_run_at__lte=now)
     )
 
-    # 🔸 Loga execuções que foram *puladas* por causa da pausa
+    # loga os pausados como “consumidos”
     for job in paused_jobs:
-        # registra evento
         log_automation_event(
             job,
             AutomationEvent.EventType.SCHEDULE_SKIPPED_PAUSED,
@@ -85,42 +137,33 @@ def run_pending_jobs():
                 f"ignorada porque a automação está pausada."
             ),
         )
-        # anda o ponteiro de next_run_at para o próximo horário,
-        # como se tivesse "consumido" esse agendamento
         job.next_run_at = job.compute_next_run(from_dt=now)
         job.save(update_fields=["next_run_at"])
 
-    # 🔹 Dispara os jobs realmente agendados
+    # executa os agendados
     for job in jobs_to_run:
-        # Evita concorrência: se já tem uma execução rodando, pula esse job
-        if AutomationRun.objects.filter(
-            job=job,
-            status=AutomationRun.Status.RUNNING,
-        ).exists():
+        # evita concorrência
+        if AutomationRun.objects.filter(job=job, status=AutomationRun.Status.RUNNING).exists():
             continue
 
-        # Dispara a execução em modo "agendado"
         execute_job_async(
             job,
             triggered_by=None,
-            triggered_mode=AutomationRun.TriggerMode.SCHEDULE,
+            triggered_mode=AutomationRun.TriggerMode.SCHEDULE,  # ✅ igual seu model
         )
 
-        # Calcula e salva a próxima execução
         job.next_run_at = job.compute_next_run(from_dt=now)
         job.save(update_fields=["next_run_at"])
 
 
+# ==========================
+#  Pastas / venv
+# ==========================
+
 def get_job_folder(job: AutomationJob) -> Path:
-    """
-    Retorna a pasta da automação:
-        <BASE_DIR>/automation_jobs/job_<id>/
-    Cria se não existir.
-    """
     job_folder = AUTOMATION_ROOT / f"job_{job.id}"
     job_folder.mkdir(parents=True, exist_ok=True)
 
-    # Criar um README simples na primeira vez
     readme = job_folder / "README.txt"
     if not readme.exists():
         readme.write_text(
@@ -137,51 +180,25 @@ def get_job_folder(job: AutomationJob) -> Path:
     return job_folder
 
 
-def _log(buffer, msg: str):
-    """
-    Escreve no buffer de log tanto se for StringIO quanto se for lista.
-    """
-    line = msg + "\n"
-    if hasattr(buffer, "write"):
-        buffer.write(line)      # StringIO, arquivo etc.
-    elif hasattr(buffer, "append"):
-        buffer.append(line)     # lista de strings
-    # se não for nenhum dos dois, ignora silenciosamente
-
-
 def get_venv_python(job_folder: Path, buffer) -> str:
     """
-    Garante que exista um .venv dentro da pasta do job e
-    retorna o caminho para o executável python desse venv.
+    Garante que exista um .venv dentro da pasta do job e retorna o python do venv.
     """
-
     job_folder = Path(job_folder)
     venv_dir = job_folder / ".venv"
 
-    # Caminho do python *dentro* do venv
     if os.name == "nt":
         venv_python = venv_dir / "Scripts" / "python.exe"
     else:
         venv_python = venv_dir / "bin" / "python"
 
-    # Se o venv já existir, só registra no log e retorna
     if venv_python.exists():
-        _log(
-            buffer,
-            f"[{timezone.now().isoformat()}] 📦 Ambiente virtual já existe: {venv_python}",
-        )
+        _log(buffer, f"[{timezone.now().isoformat()}] 📦 Ambiente virtual já existe: {venv_python}")
         return str(venv_python)
 
-    # Senão, cria o venv usando o python atual do Django (sys.executable)
     base_python = sys.executable
-    _log(
-        buffer,
-        f"[{timezone.now().isoformat()}] 📦 Criando ambiente virtual em: {venv_dir}",
-    )
-    _log(
-        buffer,
-        f"[{timezone.now().isoformat()}] ▶️ Comando venv: {base_python} -m venv {venv_dir}",
-    )
+    _log(buffer, f"[{timezone.now().isoformat()}] 📦 Criando ambiente virtual em: {venv_dir}")
+    _log(buffer, f"[{timezone.now().isoformat()}] ▶️ Comando venv: {base_python} -m venv {venv_dir}")
 
     try:
         result = subprocess.run(
@@ -200,218 +217,178 @@ def get_venv_python(job_folder: Path, buffer) -> str:
             f"[{timezone.now().isoformat()}] ❌ Falha ao criar venv: {e}\n"
             f"STDOUT:\n{e.stdout}\n\nSTDERR:\n{e.stderr}",
         )
-        # Repassa o erro pra quem chamou tratar
         raise
 
     return str(venv_python)
 
 
-def install_requirements(job_folder: Path, venv_python: Path, buffer: io.StringIO) -> None:
+def install_requirements(job_folder: Path, venv_python, buffer) -> None:
     """
-    Se existir requirements.txt na pasta da automação, instala/atualiza
-    as dependências dentro do venv.
+    Se existir requirements.txt dentro do job_folder, instala no venv do job.
     """
-    req_file = job_folder / "requirements.txt"
-    if not req_file.exists():
-        buffer.write(
-            f"[{timezone.now().isoformat()}] 📄 Nenhum requirements.txt encontrado, pulando instalação.\n"
-        )
+    job_folder = Path(job_folder)
+    venv_python = Path(venv_python)
+    requirements_file = job_folder / "requirements.txt"
+
+    if not requirements_file.exists():
+        _log(buffer, f"[{timezone.now().isoformat()}] ⚠️ Nenhum requirements.txt encontrado em: {requirements_file}")
         return
 
-    buffer.write(
-        f"[{timezone.now().isoformat()}] 📄 Encontrado requirements: {req_file}\n"
-    )
+    # upgrade pip
+    cmd1 = [str(venv_python), "-m", "pip", "install", "--upgrade", "pip"]
+    _log(buffer, f"[{timezone.now().isoformat()}] ⚙️ Atualizando pip com: {' '.join(cmd1)}")
+    r1 = subprocess.run(cmd1, cwd=job_folder, capture_output=True, text=True)
+    if r1.stdout:
+        _log(buffer, r1.stdout)
+    if r1.stderr:
+        _log(buffer, "----- STDERR (pip upgrade) -----\n" + r1.stderr)
+    if r1.returncode != 0:
+        raise RuntimeError(f"Falha ao atualizar pip (código {r1.returncode}).")
 
-    # Comando simples: atualizar pip + instalar deps
-    cmd = [
-        str(venv_python),
-        "-m",
-        "pip",
-        "install",
-        "--upgrade",
-        "pip",
-        "-r",
-        str(req_file),
-    ]
-    buffer.write(
-        f"[{timezone.now().isoformat()}] ⚙️ Instalando dependências com: {' '.join(cmd)}\n"
-    )
+    # install requirements
+    cmd2 = [str(venv_python), "-m", "pip", "install", "-r", str(requirements_file)]
+    _log(buffer, f"[{timezone.now().isoformat()}] ⚙️ Instalando requirements com: {' '.join(cmd2)}")
+    r2 = subprocess.run(cmd2, cwd=job_folder, capture_output=True, text=True)
+    if r2.stdout:
+        _log(buffer, r2.stdout)
+    if r2.stderr:
+        _log(buffer, "----- STDERR (pip install) -----\n" + r2.stderr)
+    if r2.returncode != 0:
+        raise RuntimeError(f"Falha ao instalar dependências (código {r2.returncode}).")
 
-    proc = subprocess.run(
-        cmd,
-        cwd=str(job_folder),
-        capture_output=True,
-        text=True,
-    )
-
-    if proc.stdout:
-        buffer.write(f"[{timezone.now().isoformat()}] {proc.stdout}\n")
-    if proc.stderr:
-        buffer.write(f"[{timezone.now().isoformat()}] {proc.stderr}\n")
-
-    if proc.returncode != 0:
-        raise RuntimeError(
-            f"Falha ao instalar dependências (código {proc.returncode})."
-        )
+    # sanity check (opcional: você pode remover se quiser)
+    cmd3 = [str(venv_python), "-c", "import selenium, pandas, openpyxl; print('deps_ok')"]
+    r3 = subprocess.run(cmd3, cwd=job_folder, capture_output=True, text=True)
+    if r3.stdout:
+        _log(buffer, r3.stdout.strip())
+    if r3.returncode != 0:
+        _log(buffer, "----- STDERR (deps check) -----\n" + (r3.stderr or ""))
+        raise RuntimeError("Dependências não importaram após instalar requirements (venv provavelmente corrompido).")
 
 
-def execute_external_folder_job(
-    job: AutomationJob,
-    run: AutomationRun,
-    buffer: io.StringIO,
-) -> None:
-    """
-    Executa o script principal da pasta da automação, usando o venv dedicado.
+# ==========================
+#  Execução da automação (pasta + venv)
+# ==========================
 
-    - Garante pasta do job
-    - Garante venv
-    - Instala requirements (se houver)
-    - Executa <venv_python> <script>
-    """
+def execute_external_folder_job(job: AutomationJob, run: AutomationRun, buffer) -> None:
     job_folder = get_job_folder(job)
-
-    # 1) Venv
-    buffer.write(
-        f"[{timezone.now().isoformat()}] 📁 Pasta do job: {job_folder}\n"
-    )
+    _log(buffer, f"[{timezone.now().isoformat()}] 📁 Pasta do job: {job_folder}")
 
     venv_python = get_venv_python(job_folder, buffer)
-
-    # 2) Instalar requirements, se existir
     install_requirements(job_folder, venv_python, buffer)
 
-    # 3) Script principal
     main_script_name = job.external_main_script or "main.py"
     script_path = job_folder / main_script_name
 
-    buffer.write(
-        f"[{timezone.now().isoformat()}] 📂 Diretório de trabalho: {job_folder}\n"
-    )
-    buffer.write(
-        f"[{timezone.now().isoformat()}] ▶️ Comando: {venv_python} {script_path}\n"
-    )
+    _log(buffer, f"[{timezone.now().isoformat()}] 📂 Diretório de trabalho: {job_folder}")
+    _log(buffer, f"[{timezone.now().isoformat()}] ▶️ Comando: {venv_python} -u {script_path}")
 
     if not script_path.exists():
-        raise FileNotFoundError(
-            f"Script principal '{main_script_name}' não encontrado em {job_folder}"
-        )
+        raise FileNotFoundError(f"Script principal '{main_script_name}' não encontrado em {job_folder}")
 
-    # ==========================
-    # Execução do script (Popen para permitir cancelamento)
-    # ==========================
+    # -u = unbuffered (log aparece na hora)
     proc = subprocess.Popen(
-        [str(venv_python), str(script_path)],
+        [str(venv_python), "-u", str(script_path)],
         cwd=str(job_folder),
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
+        bufsize=1,
     )
 
-    # 👇 Salva o PID no registro da execução
     run.external_pid = proc.pid
     run.save(update_fields=["external_pid"])
 
-    # Espera terminar e captura STDOUT/STDERR
-    stdout, stderr = proc.communicate()
+    def _reader(pipe, label: str):
+        try:
+            for line in iter(pipe.readline, ""):
+                _log(buffer, f"[{timezone.now().isoformat()}] {label}: {line.rstrip()}")
+        finally:
+            try:
+                pipe.close()
+            except Exception:
+                pass
 
-    if stdout:
-        buffer.write(f"[{timezone.now().isoformat()}] ----- STDOUT -----\n")
-        buffer.write(stdout + "\n")
-    if stderr:
-        buffer.write(f"[{timezone.now().isoformat()}] ----- STDERR -----\n")
-        buffer.write(stderr + "\n")
+    t_out = threading.Thread(target=_reader, args=(proc.stdout, "STDOUT"), daemon=True)
+    t_err = threading.Thread(target=_reader, args=(proc.stderr, "STDERR"), daemon=True)
+    t_out.start()
+    t_err.start()
 
-    buffer.write(
-        f"[{timezone.now().isoformat()}] 🏁 Script terminou com código de saída: {proc.returncode}\n"
-    )
+    returncode = proc.wait()
+    t_out.join(timeout=2)
+    t_err.join(timeout=2)
 
-    if proc.returncode != 0:
-        raise RuntimeError(
-            f"Script terminou com erro (código {proc.returncode}). Verifique STDOUT/STDERR acima."
-        )
+    _log(buffer, f"[{timezone.now().isoformat()}] 🏁 Script terminou com código de saída: {returncode}")
+
+    if returncode != 0:
+        raise RuntimeError(f"Script terminou com erro (código {returncode}). Verifique STDOUT/STDERR acima.")
 
 
 # ==========================
 #  Execução de Jobs
 # ==========================
 
-
 def execute_job(
     job: AutomationJob,
     triggered_by=None,
     triggered_mode: AutomationRun.TriggerMode | None = None,
 ) -> AutomationRun:
-    """
-    Executa UMA automação (modelo pasta + venv) de forma síncrona.
 
-    - Cria AutomationRun
-    - Executa a automação
-    - Atualiza status, horários e log
-
-    Regras para `triggered_mode`:
-    - Se não informado e houver `triggered_by`  → MANUAL
-    - Se não informado e não houver usuário    → SCHEDULED (agendado/sistema)
-    """
-
-    # Decide o modo padrão se não foi passado
     if triggered_mode is None:
-        if triggered_by is not None:
-            triggered_mode = AutomationRun.TriggerMode.MANUAL
-        else:
-            triggered_mode = AutomationRun.TriggerMode.SCHEDULED
+        triggered_mode = (
+            AutomationRun.TriggerMode.MANUAL
+            if triggered_by is not None
+            else AutomationRun.TriggerMode.SCHEDULE
+        )
 
-    # Cria o registro de execução
     run = AutomationRun.objects.create(
         job=job,
         status=AutomationRun.Status.RUNNING,
         triggered_by=triggered_by,
         triggered_mode=triggered_mode,
-        started_at=timezone.now(),  # evita NOT NULL
+        started_at=timezone.now(),
     )
 
-    # 🔹 LOG: início de execução (manual x agendada)
+    # evento de início (não derruba se falhar)
     try:
         if triggered_mode == AutomationRun.TriggerMode.MANUAL:
-            event_type = AutomationEvent.EventType.MANUAL_START
-            msg = "Execução manual iniciada."
+            log_automation_event(
+                job,
+                AutomationEvent.EventType.MANUAL_START,
+                run=run,
+                user=triggered_by,
+                message="Execução manual iniciada.",
+            )
         else:
-            event_type = AutomationEvent.EventType.SCHEDULE_TRIGGERED
-            msg = "Execução agendada iniciada pelo scheduler."
-
-        log_automation_event(
-            job,
-            event_type,
-            run=run,
-            user=triggered_by,
-            message=msg,
-        )
+            log_automation_event(
+                job,
+                AutomationEvent.EventType.SCHEDULE_TRIGGERED,
+                run=run,
+                user=triggered_by,
+                message="Execução agendada iniciada pelo scheduler.",
+            )
     except Exception:
-        # Se der qualquer erro ao gravar o log, não derruba a automação
         pass
 
-    buffer = io.StringIO()
-    ts = timezone.now().isoformat()
+    buffer = LiveRunLogger(run, flush_interval=1.0)
     buffer.write(
-        f"[{ts}] 🚀 Iniciando automação externa '{job.name}' (job_id={job.id}, run_id={run.id})\n"
+        f"[{timezone.now().isoformat()}] 🚀 Iniciando automação externa '{job.name}' (job_id={job.id}, run_id={run.id})\n"
     )
+    buffer.flush()
 
     try:
-        # 🔧 aqui é o ponto em que de fato invocamos a pasta + venv
         execute_external_folder_job(job, run, buffer)
         run.status = AutomationRun.Status.SUCCESS
-        buffer.write(
-            f"[{timezone.now().isoformat()}] ✅ Execução concluída com sucesso.\n"
-        )
+        buffer.write(f"[{timezone.now().isoformat()}] ✅ Execução concluída com sucesso.\n")
     except Exception:
         run.status = AutomationRun.Status.FAILED
-        buffer.write(
-            f"[{timezone.now().isoformat()}] ❌ Erro inesperado na automação:\n"
-        )
+        buffer.write(f"[{timezone.now().isoformat()}] ❌ Erro inesperado na automação:\n")
         traceback.print_exc(file=buffer)
 
+    # ✅ FINALIZA SEMPRE
     run.finished_at = timezone.now()
-    # agrega log ao campo log
-    run.log = (run.log or "") + "\n" + buffer.getvalue()
+    buffer.flush()
+    run.log = buffer.getvalue()
     run.save(update_fields=["status", "finished_at", "log"])
     return run
 
@@ -422,41 +399,26 @@ def execute_job_async(
     triggered_by=None,
     triggered_mode: AutomationRun.TriggerMode | None = None,
 ) -> None:
-    """
-    Dispara a execução em segundo plano (thread), para não travar o request.
-
-    Se `triggered_mode` vier como None, o `execute_job` vai aplicar
-    a mesma regra de MANUAL/SCHEDULED automaticamente.
-    """
-
+    """Executa em thread para não travar request."""
     def _target():
-        execute_job(
-            job,
-            triggered_by=triggered_by,
-            triggered_mode=triggered_mode,
-        )
+        execute_job(job, triggered_by=triggered_by, triggered_mode=triggered_mode)
 
-    t = threading.Thread(target=_target, daemon=True)
-    t.start()
+    threading.Thread(target=_target, daemon=True).start()
 
 
 # ==========================
-#  Helper de log de eventos
+#  Helper: eventos
 # ==========================
 
 def log_automation_event(
-    job,
-    event_type,
+    job: AutomationJob,
+    event_type: str,
     *,
-    run=None,
-    message="",
-    meta=None,
+    run: AutomationRun | None = None,
+    message: str = "",
+    meta: dict | None = None,
     user=None,
 ):
-    """
-    Registra um evento de alto nível do orquestrador
-    (ex.: execução manual, disparo agendado, job pausado, etc).
-    """
     return AutomationEvent.objects.create(
         job=job,
         run=run,

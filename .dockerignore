@@ -33,3 +33,18 @@ __pycache__/
 ~$*
 Thumbs.db
 Desktop.ini
+
+# Ignorar ambientes virtuais em qualquer pasta
+.venv/
+venv/
+env/
+
+# Ignorar arquivos compilados de Python
+__pycache__/
+*.pyc
+
+# Ignorar arquivos de variáveis de ambiente (senhas)
+.env
+
+# (Opcional) Ignorar arquivos estáticos coletados se você usa collectstatic
+staticfiles/

@@ -87,6 +87,7 @@ TEMPLATES = [
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
+                "orquestrador.context_processors.project_version",
             ],
         },
     },
@@ -269,3 +270,5 @@ SESSION_COOKIE_AGE = 10 * 60  # 10 minutos
 
 # Renova o tempo de expiração a cada requisição do usuário
 SESSION_SAVE_EVERY_REQUEST = True
+
+VERSION = '1.0.0'

@@ -1,143 +1,21 @@
 {# automation/templates/automation/job_runs.html #}
 {% extends "base.html" %}
 
-{% block title %}{{ job.name }} · Execuções · Orquestrador{% endblock %}
+{% block title %}Execuções: {{ job.name }}{% endblock %}
 
-{% block extra_css %}
-<style>
-  /* Evita scroll lateral na página dessa tela */
-  html, body {
-      max-width: 100%;
-      overflow-x: hidden;
-  }
-
-  /* Caixa de log expandida (linha de baixo) – AGORA É DIV, NÃO PRE */
-    .log-full {
-        max-height: 300px;            /* altura máxima da caixa */
-        overflow-y: auto;             /* scroll só pra baixo */
-        overflow-x: hidden;           /* nunca scroll horizontal */
-        display: block;
-        width: 100%;
-        max-width: 100%;
-
-        /* agora podemos usar normal, pois as quebras viram <br> */
-        white-space: normal;
-        word-break: break-word;
-        overflow-wrap: anywhere;
-
-        background: #020617;
-        border-radius: .5rem;
-        padding: .75rem 1rem;
-        font-size: .85rem;
-        line-height: 1.4;
-        margin: 0;
-        color: #e5e7eb;
-        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
-                    "Liberation Mono", "Courier New", monospace;
-    }
-
-
-  .log-row {
-      background: rgba(15, 23, 42, 0.85);
-  }
-
-  .log-row td {
-      border-top: none !important;
-      border-bottom: 1px solid rgba(148, 163, 184, 0.3);
-  }
-
-  .log-row-header {
-      font-size: .8rem;
-      font-weight: 600;
-      color: #e5e7eb;
-      margin-bottom: .25rem;
-  }
-
-  .log-row-meta {
-      font-size: .75rem;
-      color: #9ca3af;
-  }
-
-  /* Wrapper da tabela de execuções: ocupa 100% e sem scroll lateral */
-  .runs-table-wrapper {
-      width: 100%;
-      max-width: 100%;
-      overflow-x: hidden;
-  }
-
-  /* Tabela não pode explodir a largura do container */
-  table.runs-table {
-      width: 100%;
-      max-width: 100%;
-      table-layout: fixed;
-  }
-
-  /* Permitir quebra de linha dentro das células da tabela */
-  table.runs-table th,
-  table.runs-table td {
-      word-wrap: break-word;
-      overflow-wrap: anywhere;
-  }
-
-  /* Responsividade da tabela de execuções no mobile */
-  @media (max-width: 768px) {
-      table.runs-table thead {
-          display: none;
-      }
-
-      table.runs-table tbody tr.main-row {
-          display: block;
-          margin-bottom: 0.25rem;
-          border: 1px solid rgba(255, 255, 255, 0.08);
-          border-radius: .75rem;
-          padding: .75rem .75rem .5rem;
-          background: rgba(0, 0, 0, 0.35);
-      }
-
-      table.runs-table tbody tr.main-row td {
-          display: flex;
-          justify-content: space-between;
-          align-items: flex-start;
-          font-size: .85rem;
-          border: none !important;
-          padding: .15rem 0;
-      }
-
-      table.runs-table tbody tr.main-row td::before {
-          content: attr(data-label);
-          font-weight: 600;
-          margin-right: .5rem;
-          color: #adb5bd;
-      }
-
-      /* Linha do log ocupando largura toda no mobile */
-      table.runs-table tbody tr.log-row td {
-          display: block;
-          padding: .5rem .75rem .75rem;
-      }
-  }
-</style>
-{% endblock %}
-
-{% block header_title %}
-    Histórico de execuções – {{ job.name }}
-{% endblock %}
-
+{% block header_title %}Execuções de {{ job.name }}{% endblock %}
 {% block header_subtitle %}
-Automação: <code>{{ job.code }}</code><br>
-<span class="small text-muted">
-    Modelo: pasta + venv · Pasta:
-    <code>automation_jobs/job_{{ job.pk }}/</code> · Script principal:
-    <code>{{ job.external_main_script|default:"main.py" }}</code>
-</span>
+    Pasta da automação: <code>automation_jobs/job_{{ job.pk }}/</code><br>
+    Script principal: <code>{{ job.entrypoint }}</code><br>
+    Agendamento: {{ job.get_schedule_display }}
+    <div class="mt-2">
+        Total de execuções: {{ paginator.count|default:runs.count }}
+    </div>
 {% endblock %}
 
 {% block header_actions %}
 <a href="{% url 'automation:job_list' %}" class="btn btn-outline-light btn-sm">
-    Voltar para automações
-</a>
-<a href="{% url 'automation:job_update' job.pk %}" class="btn btn-accent btn-sm">
-    Editar automação
+    Voltar para lista
 </a>
 {% endblock %}
 
@@ -145,186 +23,148 @@ Automação: <code>{{ job.code }}</code><br>
 <div class="container-fluid">
     <div class="card module-card">
         <div class="card-body">
-            <h5 class="card-title mb-3">
-                Execuções de <strong>{{ job.name }}</strong>
-            </h5>
-            <p class="text-muted small">
-                Pasta da automação:
-                <code>automation_jobs/job_{{ job.pk }}/</code><br>
-                Script principal:
-                <code>main.py</code><br>
-                Agendamento: {{ job.schedule_description }}<br>
-                Total de execuções: {{ page_obj.paginator.count }}
-            </p>
-
-            {# ---------------- LISTA DE RUNS ---------------- #}
+            
             {% if runs %}
-                <div class="runs-table-wrapper">
-                    <table class="table table-clean align-middle mb-0 runs-table">
-                        <thead>
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead class="table-light">
                             <tr>
-                                <th>Início</th>
-                                <th>Fim</th>
-                                <th>Status</th>
-                                <th>Modo</th>
-                                <th>Usuário</th>
-                                <th>Log</th>
-                            </tr>
+                                <th style="width: 15%;">Início</th>
+                                <th style="width: 15%;">Fim</th>
+                                <th style="width: 10%;">Status</th>
+                                <th style="width: 10%;">Modo</th>
+                                <th style="width: 15%;">Usuário</th>
+                                <th style="width: 15%; text-align: right;">Ações</th> </tr>
                         </thead>
                         <tbody>
                             {% for run in runs %}
-                                {# Linha principal #}
-                                <tr class="main-row">
-                                    <td data-label="Início">
-                                        {{ run.started_at|date:"d/m/Y H:i:s" }}
-                                    </td>
-                                    <td data-label="Fim">
+                                <tr>
+                                    <td>{{ run.started_at|date:"d/m/Y H:i:s" }}</td>
+
+                                    <td>
                                         {% if run.finished_at %}
                                             {{ run.finished_at|date:"d/m/Y H:i:s" }}
                                         {% else %}
-                                            <span class="text-muted">Em execução</span>
+                                            <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                                            <span class="text-muted ms-1">Rodando...</span>
                                         {% endif %}
                                     </td>
-                                    <td data-label="Status">
-                                        {% if run.status == "success" %}
-                                            <span class="badge bg-success">Sucesso</span>
-                                        {% elif run.status == "failed" %}
-                                            <span class="badge bg-danger">Falha</span>
-                                        {% elif run.status == "running" %}
-                                            <span class="badge bg-warning text-dark">Em execução</span>
-                                        {% endif %}
+
+                                    <td>
+                                        <span id="status-badge-{{ run.id }}" class="badge 
+                                            {% if run.status == 'success' %}bg-success
+                                            {% elif run.status == 'failed' %}bg-danger
+                                            {% else %}bg-warning text-dark{% endif %}">
+                                            
+                                            {% if run.status == 'success' %}Sucesso
+                                            {% elif run.status == 'failed' %}Falha
+                                            {% else %}Em execução{% endif %}
+                                        </span>
                                     </td>
-                                    <td data-label="Modo">
-                                        <small>{{ run.get_triggered_mode_display }}</small>
-                                    </td>
-                                    <td data-label="Usuário">
+
+                                    <td>{{ run.get_triggered_mode_display }}</td>
+
+                                    <td>
                                         {% if run.triggered_by %}
-                                            <small>{{ run.triggered_by.username }}</small>
+                                            {{ run.triggered_by.username }}
                                         {% else %}
-                                            <small class="text-muted">Sistema</small>
+                                            Sistema
                                         {% endif %}
                                     </td>
-                                    <td data-label="Log">
-                                        {% if run.log %}
-                                            <button class="btn btn-sm btn-outline-secondary"
-                                                    type="button"
-                                                    data-bs-toggle="collapse"
-                                                    data-bs-target="#logRow-{{ run.id }}"
-                                                    aria-expanded="false"
-                                                    aria-controls="logRow-{{ run.id }}">
-                                                Ver log
-                                            </button>
-                                            <small class="text-muted d-block mt-1">
-                                                {{ run.log|truncatechars:80 }}
-                                            </small>
-                                        {% else %}
-                                            <small class="text-muted">Sem log</small>
-                                        {% endif %}
+
+                                    <td style="text-align: right;">
+                                        <button class="btn btn-sm btn-outline-secondary" type="button" 
+                                                data-bs-toggle="collapse" 
+                                                data-bs-target="#log-row-{{ run.id }}" 
+                                                aria-expanded="false" 
+                                                aria-controls="log-row-{{ run.id }}">
+                                            👁️ Ver Log
+                                        </button>
                                     </td>
                                 </tr>
 
-                                {# Linha de log expandida (colapsável) #}
-                                {% if run.log %}
-                                    <tr id="logRow-{{ run.id }}" class="collapse log-row">
-                                        <td colspan="6">
-                                            <div class="log-row-header">
-                                                Log da execução #{{ run.id }}
+                                <tr class="collapse bg-light" id="log-row-{{ run.id }}">
+                                    <td colspan="6" class="p-3">
+                                        <div class="card bg-dark text-light border-0 shadow-sm">
+                                            <div class="card-header border-secondary py-1 px-2 d-flex justify-content-between align-items-center">
+                                                <small class="text-muted">Terminal de Saída (ID: {{ run.id }})</small>
+                                                </div>
+                                            <div class="card-body p-0">
+                                                <pre class="small mb-0 p-3 live-log-container" 
+                                                    id="log-container-{{ run.id }}"
+                                                    data-run-id="{{ run.id }}"
+                                                    style="max-height: 300px; overflow-y: auto; white-space: pre-wrap; font-family: 'Consolas', monospace; font-size: 0.8rem; color: #0f0; background-color: #1e1e1e;"
+                                                >{{ run.log|default:"Aguardando início..." }}</pre>
                                             </div>
-                                            <div class="log-row-meta mb-2">
-                                                Início: {{ run.started_at|date:"d/m/Y H:i:s" }}
-                                                {% if run.finished_at %}
-                                                    · Fim: {{ run.finished_at|date:"d/m/Y H:i:s" }}
-                                                {% endif %}
-                                                {% if run.triggered_by %}
-                                                    · Usuário: {{ run.triggered_by.username }}
-                                                {% endif %}
-                                            </div>
-                                            <div class="log-full">
-                                                {{ run.log|linebreaksbr }}
-                                            </div>
-                                        </td>
-                                    </tr>
-                                {% endif %}
+                                        </div>
+                                    </td>
+                                </tr>
                             {% endfor %}
                         </tbody>
                     </table>
                 </div>
 
-                {# ---------------- PAGINAÇÃO ---------------- #}
-                {% if is_paginated and page_obj.paginator.num_pages > 1 %}
-                    <nav class="mt-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
-                        <div class="small text-muted">
-                            Mostrando
-                            {{ page_obj.start_index }}–{{ page_obj.end_index }}
-                            de {{ page_obj.paginator.count }} execuções
-                        </div>
-
-                        <ul class="pagination pagination-sm mb-0">
-                            {# Primeira #}
+                {% if is_paginated %}
+                    <nav class="mt-3">
+                        <ul class="pagination pagination-sm mb-0 justify-content-center">
                             {% if page_obj.has_previous %}
-                                <li class="page-item">
-                                    <a class="page-link" href="?page=1">&laquo; Primeira</a>
-                                </li>
-                            {% else %}
-                                <li class="page-item disabled">
-                                    <span class="page-link">&laquo; Primeira</span>
-                                </li>
+                                <li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}">«</a></li>
                             {% endif %}
-
-                            {# Anterior #}
-                            {% if page_obj.has_previous %}
-                                <li class="page-item">
-                                    <a class="page-link" href="?page={{ page_obj.previous_page_number }}">‹</a>
-                                </li>
-                            {% else %}
-                                <li class="page-item disabled">
-                                    <span class="page-link">‹</span>
-                                </li>
-                            {% endif %}
-
-                            {# Números vizinhos #}
-                            {% for num in page_obj.paginator.page_range %}
-                                {% if num == page_obj.number %}
-                                    <li class="page-item active">
-                                        <span class="page-link">{{ num }}</span>
-                                    </li>
-                                {% elif num >= page_obj.number|add:"-2" and num <= page_obj.number|add:"2" %}
-                                    <li class="page-item">
-                                        <a class="page-link" href="?page={{ num }}">{{ num }}</a>
-                                    </li>
-                                {% endif %}
-                            {% endfor %}
-
-                            {# Próxima #}
+                            <li class="page-item active"><span class="page-link">{{ page_obj.number }}</span></li>
                             {% if page_obj.has_next %}
-                                <li class="page-item">
-                                    <a class="page-link" href="?page={{ page_obj.next_page_number }}">›</a>
-                                </li>
-                            {% else %}
-                                <li class="page-item disabled">
-                                    <span class="page-link">›</span>
-                                </li>
-                            {% endif %}
-
-                            {# Última #}
-                            {% if page_obj.has_next %}
-                                <li class="page-item">
-                                    <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}">Última &raquo;</a>
-                                </li>
-                            {% else %}
-                                <li class="page-item disabled">
-                                    <span class="page-link">Última &raquo;</span>
-                                </li>
+                                <li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}">»</a></li>
                             {% endif %}
                         </ul>
                     </nav>
                 {% endif %}
+
             {% else %}
-                <p class="text-muted mb-0">
-                    Esta automação ainda não foi executada.
-                </p>
+                <div class="alert alert-light text-center" role="alert">
+                    Nenhuma execução encontrada para esta automação.
+                </div>
             {% endif %}
         </div>
     </div>
 </div>
+
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    
+    function fetchLogs() {
+        const logContainers = document.querySelectorAll('.live-log-container');
+
+        logContainers.forEach(container => {
+            const runId = container.dataset.runId;
+            const statusBadge = document.getElementById(`status-badge-${runId}`);
+            
+            // Só faz a requisição se o elemento existir no DOM (mesmo oculto)
+            fetch(`/automation/api/run/${runId}/log/`)
+                .then(response => response.json())
+                .then(data => {
+                    // Atualiza texto do log
+                    if (data.log && container.innerText.length !== data.log.length) {
+                        container.innerText = data.log;
+                        container.scrollTop = container.scrollHeight;
+                    }
+
+                    // Atualiza badge de status
+                    if (statusBadge) {
+                        const currentText = statusBadge.innerText.trim().toLowerCase();
+                        if (data.status === 'success' && currentText !== 'sucesso') {
+                             statusBadge.className = 'badge bg-success';
+                             statusBadge.innerText = 'Sucesso';
+                        } else if (data.status === 'failed' && currentText !== 'falha') {
+                             statusBadge.className = 'badge bg-danger';
+                             statusBadge.innerText = 'Falha';
+                        }
+                    }
+                })
+                .catch(err => console.error("Erro polling log:", err));
+        });
+    }
+
+    // Intervalo de atualização (2 segundos) diminuir esse tempo para 1 segundo ou até meio segundo (500ms)
+    setInterval(fetchLogs, 2000);
+});
+</script>
 {% endblock %}

@@ -59,6 +59,44 @@
                         </button>
                     </form>
 
+                    {# ====== BOTÕES RESTRITOS AO GRUPO administrador_Orquestrador ====== #}
+                    {% if is_orq_admin %}
+                        {# ✅ Resetar a venv desse job #}
+                        <form method="post" action="{% url 'automation:job_reset_venv' job.pk %}" class="mt-2">
+                            {% csrf_token %}
+                            <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                            <button type="submit" class="btn btn-danger w-100"
+                                    onclick="return confirm('Isso vai apagar a .venv desse job. Confirmar?');">
+                                Resetar venv
+                            </button>
+                        </form>
+
+                        {# ✅ Resetar workspace (mantém as pastas entrada/ e saida/, mas limpa tudo dentro e apaga o resto) #}
+                        <form method="post" action="{% url 'automation:job_reset_workspace' job.pk %}" class="mt-2">
+                            {% csrf_token %}
+                            <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                            <button type="submit" class="btn btn-danger w-100"
+                                    onclick="return confirm('Isso vai APAGAR tudo do job (incluindo .venv, scripts, requirements) e LIMPAR o conteúdo de entrada/ e saida/. Confirmar?');">
+                                Resetar workspace (limpar tudo)
+                            </button>
+
+                            <small class="text-muted d-block mt-1">
+                                Mantém as pastas <code>entrada/</code> e <code>saida/</code>, mas apaga todos os arquivos dentro delas.
+                            </small>
+                        </form>
+
+                        {# ✅ Resetar pasta (apaga tudo fora de entrada/saida, mas NÃO limpa conteúdo delas) #}
+                        <form method="post" action="{% url 'automation:job_reset_folder' job.pk %}" class="mt-2">
+                            {% csrf_token %}
+                            <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                            <button type="submit" class="btn btn-outline-danger w-100"
+                                    onclick="return confirm('Isso vai remover tudo da pasta do job, exceto as pastas entrada/ e saida/ (conteúdo delas será mantido). Confirmar?');">
+                                Resetar pasta (manter conteúdo de entrada/saida)
+                            </button>
+                        </form>
+                    {% endif %}
+                    {# ================================================================ #}
+
                 </div>
             </div>
         </div>
@@ -109,10 +147,8 @@
 
                                         <td class="text-end">
                                             {% if not f.is_dir and f.can_download %}
-                                                <a
-                                                  class="btn btn-sm btn-outline-primary"
-                                                  href="{% url 'automation:job_file_download' job.pk %}?subdir={{ current_subdir|urlencode }}&name={{ f.name|urlencode }}"
-                                                >
+                                                <a class="btn btn-sm btn-outline-primary"
+                                                   href="{% url 'automation:job_file_download' job.pk %}?subdir={{ current_subdir|urlencode }}&name={{ f.name|urlencode }}">
                                                     <i class="bi bi-download"></i> Baixar
                                                 </a>
                                             {% else %}
